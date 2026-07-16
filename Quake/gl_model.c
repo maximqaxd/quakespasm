@@ -46,7 +46,11 @@ static int	mod_novis_capacity;
 static byte	*mod_decompressed;
 static int	mod_decompressed_capacity;
 
+#if defined(PLATFORM_DREAMCAST)
+#define	MAX_MOD_KNOWN	1024 /* maximqad: was 4096 */
+#else
 #define	MAX_MOD_KNOWN	4096 /*johnfitz -- was 512 */
+#endif
 static qmodel_t	mod_known[MAX_MOD_KNOWN];
 static int		mod_numknown;
 
@@ -584,6 +588,12 @@ Mod_CheckFullbrights -- johnfitz
 */
 static qboolean Mod_CheckFullbrights (byte *pixels, int count)
 {
+#if defined(PLATFORM_DREAMCAST)
+	/* Dreamcast: skip fullbright/glow textures entirely. for later.*/
+	(void) pixels;
+	(void) count;
+	return false;
+#else
 	int i;
 	for (i = 0; i < count; i++)
 	{
@@ -591,6 +601,7 @@ static qboolean Mod_CheckFullbrights (byte *pixels, int count)
 			return true;
 	}
 	return false;
+#endif
 }
 
 /*

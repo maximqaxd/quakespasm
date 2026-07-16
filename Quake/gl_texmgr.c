@@ -33,7 +33,11 @@ static cvar_t	gl_max_size = {"gl_max_size", "0", CVAR_NONE};
 static cvar_t	gl_picmip = {"gl_picmip", "0", CVAR_NONE};
 static GLint	gl_hardware_maxsize;
 
+#if defined(PLATFORM_DREAMCAST)
+#define	MAX_GLTEXTURES	1024	// maximqad: was 4096
+#else
 #define	MAX_GLTEXTURES	4096
+#endif
 static int numgltextures;
 static gltexture_t	*active_gltextures, *free_gltextures;
 gltexture_t		*notexture, *nulltexture;
@@ -734,6 +738,10 @@ int TexMgr_Pad (int s)
 	int i;
 	for (i = 1; i < s; i<<=1)
 		;
+#if defined(PLATFORM_DREAMCAST)
+	if (i < 8)
+		i = 8;
+#endif
 	return i;
 }
 
@@ -1120,6 +1128,9 @@ static void TexMgr_LoadImage32 (gltexture_t *glt, unsigned *data)
 	// upload
 	GL_Bind (glt);
 	internalformat = (glt->flags & TEXPREF_ALPHA) ? gl_alpha_format : gl_solid_format;
+#if defined(PLATFORM_DREAMCAST)
+	internalformat = (glt->flags & TEXPREF_ALPHA) ? GL_ARGB4444_KOS : GL_RGB565_KOS;
+#endif
 	glTexImage2D (GL_TEXTURE_2D, 0, internalformat, glt->width, glt->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
 
 	// upload mipmaps
@@ -1147,6 +1158,113 @@ static void TexMgr_LoadImage32 (gltexture_t *glt, unsigned *data)
 	// set filter modes
 	TexMgr_SetFilterModes (glt);
 }
+
+#if defined(PLATFORM_DREAMCAST) && defined(DC_USE_PALETTED)
+/*
+================
+Dreamcast 8bpp paletted textures.
+================
+*/
+#define DC_MAX_PALETTE_BANKS	4
+static unsigned int	*dc_palette_bank[DC_MAX_PALETTE_BANKS];
+static int		dc_palette_banks_used = 0;
+static qboolean		dc_shared_palette_enabled = false;
+
+static int TexMgr_DC_GetPaletteBank (unsigned int *pal)
+{
+	int i;
+
+	for (i = 0; i < dc_palette_banks_used; i++)
+		if (dc_palette_bank[i] == pal)
+			return i;
+
+	if (dc_palette_banks_used >= DC_MAX_PALETTE_BANKS)
+		return -1;	/* out of banks -> caller falls back to RGBA */
+
+	i = dc_palette_banks_used++;
+	dc_palette_bank[i] = pal;
+
+	if (!dc_shared_palette_enabled)
+	{
+		glEnable (GL_SHARED_TEXTURE_PALETTE_EXT);
+		dc_shared_palette_enabled = true;
+	}
+
+	glColorTableEXT (GL_SHARED_TEXTURE_PALETTE_0_KOS + i, GL_RGBA8, 256,
+			 GL_RGBA, GL_UNSIGNED_BYTE, (const GLvoid *) pal);
+
+	return i;
+}
+
+/* Nearest-neighbour resample of 8-bit indices to POT dims (indices can't be
+   averaged the way TexMgr_ResampleTexture blends RGBA). Matches the texcoord
+   expectation that an NPOT source stretches to fill the padded texture. */
+static byte *TexMgr_DC_ResampleIndices (byte *in, int inw, int inh, int outw, int outh)
+{
+	byte	*out = (byte *) Hunk_Alloc (outw * outh);
+	int	x, y;
+
+	for (y = 0; y < outh; y++)
+	{
+		const byte	*srow = in + (y * inh / outh) * inw;
+		byte		*drow = out + y * outw;
+		for (x = 0; x < outw; x++)
+			drow[x] = srow[x * inw / outw];
+	}
+
+	return out;
+}
+
+/* Returns true if the texture was uploaded as 8bpp paletted. Handles any opaque
+   texture whose palette fits in a bank, including TEXPREF_PAD (padded) textures
+   like model skins -- the big VRAM consumers. */
+static qboolean TexMgr_DC_LoadPaletted (gltexture_t *glt, byte *data, unsigned int *usepal, byte padbyte)
+{
+	int	pw, ph, bank;
+
+	/* Alpha textures stay RGBA: they need TexMgr_AlphaEdgeFix (an RGBA blend)
+	   and a transparent palette entry. */
+	if (glt->flags & TEXPREF_ALPHA)
+		return false;
+
+	bank = TexMgr_DC_GetPaletteBank (usepal);
+	if (bank < 0)
+		return false;
+
+	pw = TexMgr_Pad (glt->width);
+	ph = TexMgr_Pad (glt->height);
+
+	if (glt->flags & TEXPREF_PAD)
+	{
+		/* Border-pad in index space, exactly like the RGBA path, so the
+		   engine's PadConditional texcoords line up. */
+		if ((int) glt->width < pw)
+		{
+			data = TexMgr_PadImageW (data, glt->width, glt->height, padbyte);
+			glt->width = pw;
+		}
+		if ((int) glt->height < ph)
+		{
+			data = TexMgr_PadImageH (data, glt->width, glt->height, padbyte);
+			glt->height = ph;
+		}
+	}
+	else if (pw != (int) glt->width || ph != (int) glt->height)
+	{
+		/* NPOT source stretches to fill the POT texture (nearest). */
+		data = TexMgr_DC_ResampleIndices (data, glt->width, glt->height, pw, ph);
+		glt->width = pw;
+		glt->height = ph;
+	}
+
+	GL_Bind (glt);
+	glTexImage2D (GL_TEXTURE_2D, 0, GL_COLOR_INDEX8_TWID_KOS, glt->width, glt->height, 0,
+		      GL_COLOR_INDEX, GL_UNSIGNED_BYTE, data);
+	glTexParameteri (GL_TEXTURE_2D, GL_SHARED_TEXTURE_BANK_KOS, bank);
+	TexMgr_SetFilterModes (glt);
+	return true;
+}
+#endif	/* PLATFORM_DREAMCAST */
 
 /*
 ================
@@ -1211,6 +1329,11 @@ static void TexMgr_LoadImage8 (gltexture_t *glt, byte *data, unsigned int *usepa
 			padbyte = 255;
 		}
 	}
+
+#if defined(PLATFORM_DREAMCAST) && defined(DC_USE_PALETTED)
+	if (TexMgr_DC_LoadPaletted (glt, data, usepal, padbyte))
+		return;
+#endif
 
 	// pad each dimention, but only if it's not going to be downsampled later
 	if (glt->flags & TEXPREF_PAD)
@@ -1331,6 +1454,9 @@ gltexture_t *TexMgr_LoadImage (qmodel_t *owner, const char *name, int width, int
 	glt->width = width;
 	glt->height = height;
 	glt->flags = flags;
+#if defined(PLATFORM_DREAMCAST)
+	glt->flags &= ~TEXPREF_MIPMAP;
+#endif
 	glt->shirt = -1;
 	glt->pants = -1;
 	q_strlcpy (glt->source_file, source_file, sizeof(glt->source_file));

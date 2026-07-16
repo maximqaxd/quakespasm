@@ -24,7 +24,11 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 extern cvar_t r_drawflat;
 
+#if defined(PLATFORM_DREAMCAST)
+cvar_t r_oldwater = {"r_oldwater", "1", CVAR_ARCHIVE};
+#else
 cvar_t r_oldwater = {"r_oldwater", "0", CVAR_ARCHIVE};
+#endif
 cvar_t r_waterquality = {"r_waterquality", "8", CVAR_NONE};
 cvar_t r_waterwarp = {"r_waterwarp", "1", CVAR_NONE};
 
@@ -258,7 +262,9 @@ void R_UpdateWarpTextures (void)
 
 		//copy to texture
 		GL_Bind (tx->warpimage);
+#if !defined(PLATFORM_DREAMCAST)	/* glCopyTexSubImage2D unimplemented in GLdc */
 		glCopyTexSubImage2D (GL_TEXTURE_2D, 0, 0, 0, glx, gly+glheight-gl_warpimagesize, gl_warpimagesize, gl_warpimagesize);
+#endif
 		if (GL_GenerateMipmap)
 			GL_GenerateMipmap (GL_TEXTURE_2D);
 

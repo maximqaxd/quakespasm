@@ -149,9 +149,15 @@ QS_PFNGENERATEMIPMAP GL_GenerateMipmap = NULL;
 //====================================
 
 //johnfitz -- new cvars
+#if defined(PLATFORM_DREAMCAST)
+static cvar_t	vid_fullscreen = {"vid_fullscreen", "1", CVAR_ARCHIVE};
+static cvar_t	vid_width = {"vid_width", "640", CVAR_ARCHIVE};
+static cvar_t	vid_height = {"vid_height", "480", CVAR_ARCHIVE};
+#else
 static cvar_t	vid_fullscreen = {"vid_fullscreen", "0", CVAR_ARCHIVE};	// QuakeSpasm, was "1"
 static cvar_t	vid_width = {"vid_width", "800", CVAR_ARCHIVE};		// QuakeSpasm, was 640
 static cvar_t	vid_height = {"vid_height", "600", CVAR_ARCHIVE};	// QuakeSpasm, was 480
+#endif
 static cvar_t	vid_bpp = {"vid_bpp", "16", CVAR_ARCHIVE};
 static cvar_t	vid_refreshrate = {"vid_refreshrate", "60", CVAR_ARCHIVE};
 static cvar_t	vid_vsync = {"vid_vsync", "0", CVAR_ARCHIVE};
@@ -1320,6 +1326,27 @@ static void GL_CheckExtensions (void)
 		if (GL_GenerateMipmap == NULL)
 			Con_Warning ("glGenerateMipmap not available, liquids won't have mipmaps\n");
 	}
+
+#if defined(PLATFORM_DREAMCAST)
+	gl_glsl_able = false;
+	gl_glsl_gamma_able = false;
+	gl_glsl_alias_able = false;
+	gl_vbo_able = false;
+	gl_packed_pixels = false;
+
+#if defined(DC_FORCE_MULTITEXTURE) && DC_FORCE_MULTITEXTURE
+	GL_MTexCoord2fFunc = (PFNGLMULTITEXCOORD2FARBPROC) glMultiTexCoord2fARB;
+	GL_SelectTextureFunc = (PFNGLACTIVETEXTUREARBPROC) glActiveTextureARB;
+	GL_ClientActiveTextureFunc = (PFNGLCLIENTACTIVETEXTUREARBPROC) glClientActiveTextureARB;
+	gl_mtexable = true;
+	gl_max_texture_units = 2;
+	Con_Printf ("GLdc: fixed-function multitexture (2 TMU), GLSL/VBO disabled\n");
+#else
+	gl_mtexable = false;
+	gl_max_texture_units = 1;
+	Con_Printf ("GLdc: single-texture path, GLSL/VBO/multitexture disabled\n");
+#endif
+#endif
 }
 
 /*

@@ -253,7 +253,9 @@ void GLSLGamma_GammaCorrect (void)
 // copy the framebuffer to the texture
 	GL_DisableMultitexture();
 	glBindTexture (GL_TEXTURE_2D, r_gamma_texture);
+#if !defined(PLATFORM_DREAMCAST)	/* glCopyTexSubImage2D unimplemented in GLdc */
 	glCopyTexSubImage2D (GL_TEXTURE_2D, 0, 0, 0, glx, gly, glwidth, glheight);
+#endif
 
 // draw the texture back to the framebuffer with a fragment shader
 	GL_UseProgramFunc (r_gamma_program);
@@ -1026,7 +1028,9 @@ void R_ScaleView (void)
 
 	// copy the framebuffer to the texture
 	glBindTexture (GL_TEXTURE_2D, r_scaleview_texture);
+#if !defined(PLATFORM_DREAMCAST)	/* glCopyTexSubImage2D unimplemented in GLdc */
 	glCopyTexSubImage2D (GL_TEXTURE_2D, 0, 0, 0, srcx, srcy, srcw, srch);
+#endif
 
 	// draw the texture back to the framebuffer
 	glDisable (GL_ALPHA_TEST);
