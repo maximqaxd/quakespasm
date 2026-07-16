@@ -1,0 +1,142 @@
+# Makefile for QuakeSpasm on the Sega Dreamcast (KallistiOS + GLdc + SDL2 + sh4zam).
+#
+# Usage (from a KOS environment -- source /opt/toolchains/dc/kos/environ.sh):
+#   make -f Makefile.dreamcast
+#
+# Produces quakespasm.elf. Convert to a bootable image with mkdcdisc/scramble.
+
+ifndef KOS_BASE
+$(error Source the KOS environment first: . /opt/toolchains/dc/kos/environ.sh)
+endif
+
+# ---------------------------
+# Feature toggles
+# ---------------------------
+# Music codecs. Start minimal (WAVE only) for a clean first link; enable more
+# once the base build boots.
+USE_CODEC_WAVE  ?= 1
+USE_CODEC_VORBIS?= 0
+USE_CODEC_MP3   ?= 0
+USE_CODEC_OPUS  ?= 0
+
+# ---------------------------
+# Toolchain / flags
+# ---------------------------
+CC       = kos-cc
+LINKER   = kos-cc
+
+SDL2_PREFIX = $(KOS_BASE)/addons
+
+INCLUDES = -I. \
+           -I$(SDL2_PREFIX)/include \
+           -I$(SDL2_PREFIX)/include/SDL2 \
+           -I$(KOS_PORTS)/include
+
+# DC_USE_PALETTED: opaque textures upload as 8bpp paletted (4x less VRAM than
+# RGBA). Alpha textures still go through the 16-bit path. Safe now that the
+# re-entrant load-time render (the real corruption source) is disabled.
+DEFINES  = -DPLATFORM_DREAMCAST -DUSE_SDL2 -DNO_SDL_CONFIG -DGLQUAKE -DDC_USE_PALETTED
+
+# Optimize for SIZE by default: smaller code lowers the heap break, which the
+# runtime hunk probe (DC_HeapSize) turns directly into more hunk. Hot math is
+# built for SPEED (-O3) via a dedicated rule below.
+OPT_SIZE  = -Os
+OPT_SPEED = -O3
+BASEFLAGS = -ffast-math -fomit-frame-pointer -Wall -Wno-trigraphs \
+            $(INCLUDES) $(DEFINES)
+
+CFLAGS      = $(OPT_SIZE)  $(BASEFLAGS)
+CFLAGS_MATH = $(OPT_SPEED) $(BASEFLAGS)
+
+# GLdc + SDL2 + SH4 SIMD math. SDL2 needs KOS pthreads. -lm last.
+# KOS runtime (kallisti/newlib) is added by kos-cc.
+LIBS     = -L$(SDL2_PREFIX)/lib/dreamcast \
+           -lSDL2 -lpthread \
+           -lGL -lsh4zam -lm
+
+# ---------------------------
+# Codec wiring
+# ---------------------------
+ifeq ($(USE_CODEC_WAVE),1)
+CFLAGS += -DUSE_CODEC_WAVE
+endif
+ifeq ($(USE_CODEC_VORBIS),1)
+CFLAGS += -DUSE_CODEC_VORBIS -DVORBIS_USE_TREMOR
+LIBS   += -ltremor -logg
+endif
+ifeq ($(USE_CODEC_MP3),1)
+CFLAGS += -DUSE_CODEC_MP3
+LIBS   += -lmp3
+endif
+ifeq ($(USE_CODEC_OPUS),1)
+CFLAGS += -DUSE_CODEC_OPUS
+LIBS   += -lopusfile -lopus -logg
+endif
+
+# ---------------------------
+# Objects
+# ---------------------------
+# Always-safe music core (codec-specific files added conditionally below).
+MUSIC_OBJS = bgmusic.o snd_codec.o snd_wave.o
+ifeq ($(USE_CODEC_VORBIS),1)
+MUSIC_OBJS += snd_vorbis.o snd_mp3tag.o
+endif
+ifeq ($(USE_CODEC_MP3),1)
+MUSIC_OBJS += snd_mp3.o snd_mp3tag.o
+endif
+ifeq ($(USE_CODEC_OPUS),1)
+MUSIC_OBJS += snd_opus.o
+endif
+
+COMOBJ_SND   = snd_dma.o snd_mix.o snd_mem.o $(sort $(MUSIC_OBJS))
+# Null audio backend for bring-up (set USE_NULL_SOUND=0 for the real SDL driver).
+USE_NULL_SOUND ?= 1
+ifeq ($(USE_NULL_SOUND),1)
+SYSOBJ_SND   = snd_null.o
+else
+SYSOBJ_SND   = snd_sdl.o
+endif
+SYSOBJ_CDA   = cd_sdl.o
+SYSOBJ_INPUT = in_sdl.o
+SYSOBJ_GL_VID= gl_vidsdl.o
+SYSOBJ_NET   = net_bsd.o net_udp.o
+SYSOBJ_SYS   = pl_linux.o sys_sdl_unix.o
+SYSOBJ_MAIN  = main_sdl.o
+
+GLOBJS = \
+	gl_refrag.o gl_rlight.o gl_rmain.o gl_fog.o gl_rmisc.o \
+	r_part.o r_world.o gl_screen.o gl_sky.o gl_warp.o \
+	$(SYSOBJ_GL_VID) gl_draw.o image.o gl_texmgr.o gl_mesh.o \
+	r_sprite.o r_alias.o r_brush.o gl_model.o
+
+OBJS = strlcat.o strlcpy.o \
+	$(GLOBJS) \
+	$(SYSOBJ_INPUT) $(COMOBJ_SND) $(SYSOBJ_SND) $(SYSOBJ_CDA) \
+	$(SYSOBJ_NET) net_dgrm.o net_loop.o net_main.o \
+	chase.o cl_demo.o cl_input.o cl_main.o cl_parse.o cl_tent.o \
+	console.o keys.o menu.o sbar.o view.o wad.o \
+	cmd.o common.o miniz.o crc.o cvar.o cfgfile.o \
+	host.o host_cmd.o mathlib.o \
+	pr_cmds.o pr_edict.o pr_exec.o \
+	sv_main.o sv_move.o sv_phys.o sv_user.o world.o zone.o \
+	$(SYSOBJ_SYS) $(SYSOBJ_MAIN)
+
+# ---------------------------
+# Rules
+# ---------------------------
+.PHONY: all clean
+
+all: quakespasm.elf
+
+%.o: %.c
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+# Hot math path built for speed, not size.
+mathlib.o: mathlib.c
+	$(CC) $(CFLAGS_MATH) -c -o $@ $<
+
+quakespasm.elf: $(OBJS)
+	$(LINKER) -o $@ $(OBJS) $(LIBS)
+
+clean:
+	rm -f $(OBJS) quakespasm.elf

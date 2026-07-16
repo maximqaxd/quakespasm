@@ -1,0 +1,13 @@
+Place Quake game data here.
+
+Required:
+  cd/id1/pak0.pak   (shareware or full Quake)
+Optional:
+  cd/id1/pak1.pak   (registered/full version)
+  cd/id1/config.cfg, autoexec.cfg, music/*.ogg, etc.
+
+Everything under cd/ is written to the disc data track by build_dreamcast.sh
+(via `mkdcdisc -D cd`) and mounts at /cd on the Dreamcast, which is the
+engine's basedir. So id1 ends up at /cd/id1.
+
+Mission packs go in cd/hipnotic and cd/rogue (run with -hipnotic / -rogue).
