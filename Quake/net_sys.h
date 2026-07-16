@@ -82,6 +82,10 @@ typedef int	socklen_t;			/* defining as signed int to match the old api */
 
 #define	socketerror(x)	strerror((x))
 
+#if defined(PLATFORM_DREAMCAST)
+#include "net_dc.h"
+#endif
+
 /* Verify that we defined HAVE_SA_LEN correctly: */
 COMPILE_TIME_ASSERT(sockaddr, offsetof(struct sockaddr, sa_family) == SA_FAM_OFFSET);
 
