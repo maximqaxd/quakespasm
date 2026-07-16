@@ -86,7 +86,11 @@ cvar_t	r_drawflat = {"r_drawflat","0",CVAR_NONE};
 cvar_t	r_flatlightstyles = {"r_flatlightstyles", "0", CVAR_NONE};
 cvar_t	gl_fullbrights = {"gl_fullbrights", "1", CVAR_ARCHIVE};
 cvar_t	gl_farclip = {"gl_farclip", "65536", CVAR_ARCHIVE};
+#if defined(PLATFORM_DREAMCAST)
+cvar_t	gl_overbright = {"gl_overbright", "0", CVAR_ARCHIVE};
+#else
 cvar_t	gl_overbright = {"gl_overbright", "1", CVAR_ARCHIVE};
+#endif
 cvar_t	gl_overbright_models = {"gl_overbright_models", "1", CVAR_ARCHIVE};
 cvar_t	r_oldskyleaf = {"r_oldskyleaf", "0", CVAR_NONE};
 cvar_t	r_drawworld = {"r_drawworld", "1", CVAR_NONE};

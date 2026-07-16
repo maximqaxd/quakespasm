@@ -67,9 +67,11 @@ static int DC_HeapSize (void)
 {
 	const size_t reserve = 3 * 1024 * 1024;	/* 3MB (particle cap freed hunk to afford this) */
 	const size_t floor   = MINIMUM_MEMORY_LEVELPAK;	/* never return less than Quake requires */
-	const size_t ceiling = 8 * 1024 * 1024;	/* cap the hunk so GLdc's per-frame vertex
-						   buffer has room. 7MB was too tight (Cache_TryAlloc
-						   failed); 8MB fits map + model cache. */
+	const size_t ceiling = 7 * 1024 * 1024;	/* cap the hunk so GLdc's per-frame vertex
+						   buffer has room. The console (1MB->128KB) and
+						   grayscale-lightdata savings dropped permanent hunk
+						   use enough that 7MB now fits map+cache and hands
+						   GLdc ~1MB more (fixes the sbrk OOM in-game). */
 	uintptr_t brk = (uintptr_t) sbrk (0);
 	size_t avail;
 

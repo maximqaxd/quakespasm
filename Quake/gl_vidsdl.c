@@ -681,6 +681,21 @@ static qboolean VID_SetMode (int width, int height, int refreshrate, int bpp, qb
 
 	/* Create GL context if needed */
 	if (!gl_context) {
+#if defined(PLATFORM_DREAMCAST)
+		{
+			GLdcConfig cfg;
+			glKosInitConfig (&cfg);
+			cfg.autosort_enabled = GL_FALSE;
+			cfg.fsaa_enabled = GL_FALSE;
+			cfg.internal_palette_format = GL_RGBA4;
+			cfg.texture_twiddle = GL_TRUE;
+			cfg.initial_op_capacity = 12288;
+			cfg.initial_tr_capacity = 4096;
+			cfg.initial_pt_capacity = 2048;
+			cfg.initial_immediate_capacity = 8192;
+			glKosInitEx (&cfg);
+		}
+#endif
 		gl_context = SDL_GL_CreateContext(draw_context);
 		if (!gl_context)
 			Sys_Error("Couldn't create GL context");

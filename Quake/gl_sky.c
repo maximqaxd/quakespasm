@@ -44,7 +44,11 @@ static gltexture_t	*skybox_textures[6];
 static gltexture_t	*solidskytexture, *alphaskytexture;
 
 extern cvar_t gl_farclip;
+#if defined(PLATFORM_DREAMCAST)
+static cvar_t r_fastsky = {"r_fastsky", "1", CVAR_NONE};
+#else
 static cvar_t r_fastsky = {"r_fastsky", "0", CVAR_NONE};
+#endif
 static cvar_t r_sky_quality = {"r_sky_quality", "12", CVAR_NONE};
 static cvar_t r_skyalpha = {"r_skyalpha", "1", CVAR_NONE};
 static cvar_t r_skyfog = {"r_skyfog","0.5",CVAR_NONE};
