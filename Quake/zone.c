@@ -23,7 +23,11 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 
+#if defined(PLATFORM_DREAMCAST)
+#define	DYNAMIC_SIZE	0x40000	// 256KB
+#else
 #define	DYNAMIC_SIZE	(4 * 1024 * 1024) // ericw -- was 512KB (64-bit) / 384KB (32-bit)
+#endif
 
 #define	ZONEID	0x1d4a11
 #define MINFRAGMENT	64

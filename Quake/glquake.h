@@ -306,8 +306,13 @@ extern overflowtimes_t dev_overflows; //this stores the last time overflow messa
 //johnfitz -- moved here from r_brush.c
 extern int gl_lightmap_format, lightmap_bytes;
 
+#if defined(PLATFORM_DREAMCAST)
+#define LMBLOCK_WIDTH	128	// maximqad: was 256
+#define LMBLOCK_HEIGHT	128
+#else
 #define LMBLOCK_WIDTH	256	//FIXME: make dynamic. if we have a decent card there's no real reason not to use 4k or 16k (assuming there's no lightstyles/dynamics that need uploading...)
 #define LMBLOCK_HEIGHT	256 //Alternatively, use texture arrays, which would avoid the need to switch textures as often.
+#endif
 
 typedef struct glRect_s {
 	unsigned short l,t,w,h;

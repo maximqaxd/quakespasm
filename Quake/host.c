@@ -61,7 +61,14 @@ cvar_t	host_framerate = {"host_framerate","0",CVAR_NONE};	// set for slow motion
 cvar_t	host_speeds = {"host_speeds","0",CVAR_NONE};			// set for running times
 cvar_t	host_maxfps = {"host_maxfps", "72", CVAR_ARCHIVE}; //johnfitz
 cvar_t	host_timescale = {"host_timescale", "0", CVAR_NONE}; //johnfitz
+#if defined(PLATFORM_DREAMCAST)
+/* Dreamcast: was 8192. Drives cl_entities (240B each, permanent hunk) AND the
+   malloc'd sv.edicts (competes with GLdc's reserve). 8192 wastes ~1.9MB hunk +
+   ~1.6MB reserve; id1 maps use <600 edicts, so 1024 is safe and frees ~3MB. */
+cvar_t	max_edicts = {"max_edicts", "1024", CVAR_NONE};
+#else
 cvar_t	max_edicts = {"max_edicts", "8192", CVAR_NONE}; //johnfitz //ericw -- changed from 2048 to 8192, removed CVAR_ARCHIVE
+#endif
 
 cvar_t	sys_ticrate = {"sys_ticrate","0.05",CVAR_NONE}; // dedicated server
 cvar_t	serverprofile = {"serverprofile","0",CVAR_NONE};
@@ -77,7 +84,11 @@ cvar_t	coop = {"coop","0",CVAR_NONE};			// 0 or 1
 
 cvar_t	pausable = {"pausable","1",CVAR_NONE};
 
+#if defined(PLATFORM_DREAMCAST)
+cvar_t	developer = {"developer","1",CVAR_NONE};	/* maximqad: was 0 for later */
+#else
 cvar_t	developer = {"developer","0",CVAR_NONE};
+#endif
 
 cvar_t	temp1 = {"temp1","0",CVAR_NONE};
 
