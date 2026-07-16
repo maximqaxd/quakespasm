@@ -269,7 +269,7 @@ extern	cvar_t	cl_startdemos;
 
 #define	MAX_TEMP_ENTITIES	256		//johnfitz -- was 64
 #if defined(PLATFORM_DREAMCAST)
-#define	MAX_STATIC_ENTITIES	1024	// maximqad: was 4096
+#define	MAX_STATIC_ENTITIES	512	// maximqad: was 4096
 #else
 #define	MAX_STATIC_ENTITIES	4096	//ericw -- was 512	//johnfitz -- was 128
 #endif

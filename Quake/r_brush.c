@@ -356,7 +356,7 @@ int AllocBlock (int w, int h, int *x, int *y)
 			lightmap_count++;
 			lightmaps = (struct lightmap_s *) realloc(lightmaps, sizeof(*lightmaps)*lightmap_count);
 			memset(&lightmaps[texnum], 0, sizeof(lightmaps[texnum]));
-			lightmaps[texnum].data = (byte *) calloc(1, 4*LMBLOCK_WIDTH*LMBLOCK_HEIGHT);
+			lightmaps[texnum].data = (byte *) calloc(1, lightmap_bytes*LMBLOCK_WIDTH*LMBLOCK_HEIGHT);
 			//as we're only tracking one texture, we don't need multiple copies of allocated any more.
 			memset(allocated, 0, sizeof(allocated));
 		}
@@ -546,7 +546,11 @@ void GL_BuildLightmaps (void)
 	last_lightmap_allocated = 0;
 	lightmap_count = 0;
 
+#if defined(PLATFORM_DREAMCAST)
+	gl_lightmap_format = GL_RGB565_KOS;	/* 2 bytes/luxel: halves lightmap RAM + VRAM */
+#else
 	gl_lightmap_format = GL_RGBA;//FIXME: hardcoded for now!
+#endif
 
 	switch (gl_lightmap_format)
 	{
@@ -556,6 +560,11 @@ void GL_BuildLightmaps (void)
 	case GL_BGRA:
 		lightmap_bytes = 4;
 		break;
+#if defined(PLATFORM_DREAMCAST)
+	case GL_RGB565_KOS:
+		lightmap_bytes = 2;
+		break;
+#endif
 	default:
 		Sys_Error ("GL_BuildLightmaps: bad lightmap format");
 	}
@@ -822,12 +831,23 @@ void R_BuildLightMap (msurface_t *surf, byte *dest, int stride)
 				surf->cached_light[maps] = scale;	// 8.8 fraction
 				//johnfitz -- lit support via lordhavoc
 				bl = blocklights;
+#if defined(PLATFORM_DREAMCAST)
+				// grayscale lightdata: 1 byte/luxel, replicated to r,g,b
+				for (i=0 ; i<size ; i++)
+				{
+					unsigned lum = *lightmap++ * scale;
+					*bl++ += lum;
+					*bl++ += lum;
+					*bl++ += lum;
+				}
+#else
 				for (i=0 ; i<size ; i++)
 				{
 					*bl++ += *lightmap++ * scale;
 					*bl++ += *lightmap++ * scale;
 					*bl++ += *lightmap++ * scale;
 				}
+#endif
 				//johnfitz
 			}
 		}
@@ -936,6 +956,35 @@ void R_BuildLightMap (msurface_t *surf, byte *dest, int stride)
 			}
 		}
 		break;
+#if defined(PLATFORM_DREAMCAST)
+	case GL_RGB565_KOS:
+		stride -= smax * 2;
+		bl = blocklights;
+		for (i=0 ; i<tmax ; i++, dest += stride)
+		{
+			for (j=0 ; j<smax ; j++)
+			{
+				if (overbright)
+				{
+					r = *bl++ >> 8;
+					g = *bl++ >> 8;
+					b = *bl++ >> 8;
+				}
+				else
+				{
+					r = *bl++ >> 7;
+					g = *bl++ >> 7;
+					b = *bl++ >> 7;
+				}
+				if (r > 255) r = 255;
+				if (g > 255) g = 255;
+				if (b > 255) b = 255;
+				*(unsigned short *)dest = ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
+				dest += 2;
+			}
+		}
+		break;
+#endif
 	default:
 		Sys_Error ("R_BuildLightMap: bad lightmap format");
 	}
@@ -951,8 +1000,9 @@ assumes lightmap texture is already bound
 static void R_UploadLightmap(int lmap)
 {
 	const int wide10bits = !!r_lightmapwide.value;
-	const GLenum type = wide10bits ?
+	GLenum type = wide10bits ?
 	    GL_UNSIGNED_INT_10_10_10_2 : GL_UNSIGNED_BYTE;
+	GLenum format = gl_lightmap_format;
 	struct lightmap_s *lm = &lightmaps[lmap];
 
 	if (!lm->modified)
@@ -960,7 +1010,15 @@ static void R_UploadLightmap(int lmap)
 
 	lm->modified = false;
 
-	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, lm->rectchange.t, LMBLOCK_WIDTH, lm->rectchange.h, gl_lightmap_format,
+#if defined(PLATFORM_DREAMCAST)
+	if (gl_lightmap_format == GL_RGB565_KOS)
+	{
+		format = GL_RGB;
+		type = GL_UNSIGNED_SHORT_5_6_5;
+	}
+#endif
+
+	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, lm->rectchange.t, LMBLOCK_WIDTH, lm->rectchange.h, format,
 			type, lm->data + lm->rectchange.t*LMBLOCK_WIDTH*lightmap_bytes);
 	lm->rectchange.l = LMBLOCK_WIDTH;
 	lm->rectchange.t = LMBLOCK_HEIGHT;
@@ -992,10 +1050,19 @@ R_RebuildAllLightmaps -- johnfitz -- called when gl_overbright gets toggled
 void R_RebuildAllLightmaps (void)
 {
 	const int wide10bits = !!r_lightmapwide.value;
-	const GLenum type = wide10bits ?
+	GLenum type = wide10bits ?
 	    GL_UNSIGNED_INT_10_10_10_2 : GL_UNSIGNED_BYTE;
+	GLenum format = gl_lightmap_format;
 	int			i, j;
 	qmodel_t	*mod;
+
+#if defined(PLATFORM_DREAMCAST)
+	if (gl_lightmap_format == GL_RGB565_KOS)
+	{
+		format = GL_RGB;
+		type = GL_UNSIGNED_SHORT_5_6_5;
+	}
+#endif
 	msurface_t	*fa;
 	byte		*base;
 
@@ -1022,7 +1089,7 @@ void R_RebuildAllLightmaps (void)
 	for (i=0; i<lightmap_count; i++)
 	{
 		GL_Bind (lightmaps[i].texture);
-		glTexSubImage2D (GL_TEXTURE_2D, 0, 0, 0, LMBLOCK_WIDTH, LMBLOCK_HEIGHT, gl_lightmap_format,
+		glTexSubImage2D (GL_TEXTURE_2D, 0, 0, 0, LMBLOCK_WIDTH, LMBLOCK_HEIGHT, format,
 				 type, lightmaps[i].data);
 	}
 }

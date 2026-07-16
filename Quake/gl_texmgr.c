@@ -30,7 +30,11 @@ static const int	gl_alpha_format = 4;
 static cvar_t	gl_texturemode = {"gl_texturemode", "", CVAR_ARCHIVE};
 static cvar_t	gl_texture_anisotropy = {"gl_texture_anisotropy", "1", CVAR_ARCHIVE};
 static cvar_t	gl_max_size = {"gl_max_size", "0", CVAR_NONE};
+#if defined(PLATFORM_DREAMCAST)
+static cvar_t	gl_picmip = {"gl_picmip", "1", CVAR_NONE};
+#else
 static cvar_t	gl_picmip = {"gl_picmip", "0", CVAR_NONE};
+#endif
 static GLint	gl_hardware_maxsize;
 
 #if defined(PLATFORM_DREAMCAST)
@@ -1227,12 +1231,15 @@ static qboolean TexMgr_DC_LoadPaletted (gltexture_t *glt, byte *data, unsigned i
 	if (glt->flags & TEXPREF_ALPHA)
 		return false;
 
+	pw = TexMgr_Pad (glt->width);
+	ph = TexMgr_Pad (glt->height);
+
+	if (pw != ph)
+		return false;
+
 	bank = TexMgr_DC_GetPaletteBank (usepal);
 	if (bank < 0)
 		return false;
-
-	pw = TexMgr_Pad (glt->width);
-	ph = TexMgr_Pad (glt->height);
 
 	if (glt->flags & TEXPREF_PAD)
 	{
@@ -1378,12 +1385,22 @@ TexMgr_LoadLightmap -- handles lightmap data
 static void TexMgr_LoadLightmap (gltexture_t *glt, byte *data)
 {
 	const qboolean wide10bits = !!r_lightmapwide.value;
-	const GLenum type = wide10bits ? GL_UNSIGNED_INT_10_10_10_2 : GL_UNSIGNED_BYTE;
-	const GLint internalfmt = wide10bits ? GL_RGB10_A2 : lightmap_bytes;
+	GLenum type = wide10bits ? GL_UNSIGNED_INT_10_10_10_2 : GL_UNSIGNED_BYTE;
+	GLint internalfmt = wide10bits ? GL_RGB10_A2 : lightmap_bytes;
+	GLenum format = gl_lightmap_format;
+
+#if defined(PLATFORM_DREAMCAST)
+	if (gl_lightmap_format == GL_RGB565_KOS)
+	{
+		format = GL_RGB;
+		type = GL_UNSIGNED_SHORT_5_6_5;
+		internalfmt = GL_RGB565_KOS;
+	}
+#endif
 
 	// upload it
 	GL_Bind (glt);
-	glTexImage2D (GL_TEXTURE_2D, 0, internalfmt, glt->width, glt->height, 0, gl_lightmap_format, type, data);
+	glTexImage2D (GL_TEXTURE_2D, 0, internalfmt, glt->width, glt->height, 0, format, type, data);
 
 	// set filter modes
 	TexMgr_SetFilterModes (glt);

@@ -32,10 +32,7 @@ INCLUDES = -I. \
            -I$(SDL2_PREFIX)/include/SDL2 \
            -I$(KOS_PORTS)/include
 
-# DC_USE_PALETTED: opaque textures upload as 8bpp paletted (4x less VRAM than
-# RGBA). Alpha textures still go through the 16-bit path. Safe now that the
-# re-entrant load-time render (the real corruption source) is disabled.
-DEFINES  = -DPLATFORM_DREAMCAST -DUSE_SDL2 -DNO_SDL_CONFIG -DGLQUAKE -DDC_USE_PALETTED
+DEFINES  = -DPLATFORM_DREAMCAST -DUSE_SDL2 -DNO_SDL_CONFIG -DGLQUAKE
 
 # Optimize for SIZE by default: smaller code lowers the heap break, which the
 # runtime hunk probe (DC_HeapSize) turns directly into more hunk. Hot math is

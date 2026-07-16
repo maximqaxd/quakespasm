@@ -47,7 +47,7 @@ static byte	*mod_decompressed;
 static int	mod_decompressed_capacity;
 
 #if defined(PLATFORM_DREAMCAST)
-#define	MAX_MOD_KNOWN	1024 /* maximqad: was 4096 */
+#define	MAX_MOD_KNOWN	512 /* maximqad: was 4096 */
 #else
 #define	MAX_MOD_KNOWN	4096 /*johnfitz -- was 512 */
 #endif
@@ -1090,7 +1090,13 @@ static void Mod_LoadLighting (lump_t *l)
 	COM_StripExtension(litfilename, litfilename, sizeof(litfilename));
 	q_strlcat(litfilename, ".lit", sizeof(litfilename));
 	mark = Hunk_LowMark();
+#if defined(PLATFORM_DREAMCAST)
+	/* Dreamcast: no colored lighting -- keep lightdata grayscale (1 byte/luxel) */
+	data = NULL;
+	(void) path_id;
+#else
 	data = (byte*) COM_LoadHunkFile (litfilename, &path_id);
+#endif
 	if (data)
 	{
 		// use lit file only from the same gamedir as the map
@@ -1163,6 +1169,12 @@ static void Mod_LoadLighting (lump_t *l)
 	}
 #endif
 
+#if defined(PLATFORM_DREAMCAST)
+	/* grayscale: 1 byte/luxel, read+replicated in R_BuildLightMap. */
+	loadmodel->lightdata = (byte *) Hunk_AllocName (l->filelen, litfilename);
+	memcpy (loadmodel->lightdata, mod_base + l->fileofs, l->filelen);
+	return;
+#endif
 	loadmodel->lightdata = (byte *) Hunk_AllocName ( l->filelen*3, litfilename);
 	in = loadmodel->lightdata + l->filelen*2; // place the file at the end, so it will not be overwritten until the very last write
 	out = loadmodel->lightdata;
@@ -1632,7 +1644,11 @@ static void Mod_LoadFaces (lump_t *l, qboolean bsp2)
 			out->samples = loadmodel->lightdata + lofs; // accounts for RGB light data
 #endif
 		else
+#if defined(PLATFORM_DREAMCAST)
+			out->samples = loadmodel->lightdata + lofs; // grayscale: 1 byte/luxel
+#else
 			out->samples = loadmodel->lightdata + (lofs * 3); //johnfitz -- lit support via lordhavoc (was "+ i")
+#endif
 
 		//johnfitz -- this section rewritten
 		if (!q_strncasecmp(out->texinfo->texture->name,"sky",3)) // sky surface //also note -- was Q_strncmp, changed to match qbsp
