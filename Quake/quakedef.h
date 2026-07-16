@@ -226,7 +226,13 @@ typedef struct
 
 #include "platform.h"
 
-#if defined(SDL_FRAMEWORK) || defined(NO_SDL_CONFIG)
+#if defined(PLATFORM_DREAMCAST)
+#include <SDL2/SDL.h>
+#include <GL/gl.h>
+#include <GL/glext.h>
+#include <GL/glkos.h>
+#include "gl_dc_compat.h"
+#elif defined(SDL_FRAMEWORK) || defined(NO_SDL_CONFIG)
 #if defined(USE_SDL2)
 #ifdef __EMSCRIPTEN__
 #include <GL/gl.h>

@@ -28,7 +28,16 @@
 #define ARCHDEFS_H
 
 
-#if defined(__DJGPP__) || defined(__MSDOS__) || defined(__DOS__) || defined(_MSDOS)
+#if defined(_arch_dreamcast) || defined(__DREAMCAST__)
+
+#   if !defined(PLATFORM_DREAMCAST)
+#	define	PLATFORM_DREAMCAST	1
+#   endif
+#   if !defined(PLATFORM_UNIX)
+#	define	PLATFORM_UNIX		1
+#   endif
+
+#elif defined(__DJGPP__) || defined(__MSDOS__) || defined(__DOS__) || defined(_MSDOS)
 
 #   if !defined(PLATFORM_DOS)
 #	define	PLATFORM_DOS		1
@@ -121,7 +130,9 @@
 #endif	/* PLATFORM_AMIGAOS3 (for convenience) */
 
 
-#if defined(_WIN64)
+#if defined(PLATFORM_DREAMCAST)
+#	define	PLATFORM_STRING	"Dreamcast"
+#elif defined(_WIN64)
 #	define	PLATFORM_STRING	"Win64"
 #elif defined(PLATFORM_WINDOWS)
 #	define	PLATFORM_STRING	"Windows"
