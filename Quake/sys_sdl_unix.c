@@ -233,6 +233,12 @@ static int Sys_NumCPUs (void)
 	return numcpus;
 }
 
+#elif defined(PLATFORM_DREAMCAST)
+static int Sys_NumCPUs (void)
+{
+	return 1;	/* single-core SH4 */
+}
+
 #else /* unknown OS */
 static int Sys_NumCPUs (void)
 {
@@ -418,7 +424,11 @@ void Sys_Init (void)
 
 	memset (cwd, 0, sizeof(cwd));
 	Sys_GetBasedir(host_parms->argv[0], cwd, sizeof(cwd));
+#if !defined(PLATFORM_DREAMCAST)
 	host_parms->basedir = cwd;
+#else
+	/* Dreamcast: cwd is "/" (KOS root); keep the "/cd" basedir set in main(). */
+#endif
 #ifndef DO_USERDIRS
 	host_parms->userdir = host_parms->basedir; /* code elsewhere relies on this ! */
 #else
@@ -479,6 +489,9 @@ void Sys_Printf (const char *fmt, ...)
 	va_start(argptr, fmt);
 	vprintf(fmt, argptr);
 	va_end(argptr);
+#if defined(PLATFORM_DREAMCAST)
+	fflush (stdout);
+#endif
 }
 
 void Sys_Quit (void)

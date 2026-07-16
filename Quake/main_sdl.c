@@ -21,6 +21,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
 
+#if defined(_arch_dreamcast)
+#include <kos.h>
+#endif
 #include "quakedef.h"
 #if defined(SDL_FRAMEWORK) || defined(NO_SDL_CONFIG)
 #if defined(USE_SDL2)
@@ -34,6 +37,55 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include <stdio.h>
 #ifdef __EMSCRIPTEN__
 #include <gl4esinit.h>
+#endif
+
+#if defined(PLATFORM_DREAMCAST)
+#include <malloc.h>
+#include <unistd.h>	/* sbrk */
+#include <kos/thread.h>
+#include <arch/arch.h>	/* _arch_mem_top */
+KOS_INIT_FLAGS(INIT_DEFAULT | INIT_CDROM | INIT_CONTROLLER | INIT_KEYBOARD |
+               INIT_MOUSE | INIT_VMU | INIT_NET);
+
+#define MAIN_STACK_SIZE (32 * 1024)
+static void DC_InitThreadStack (void)
+{
+	kthread_t *current = thd_get_current ();
+	if (current)
+	{
+		void *new_stack = malloc (MAIN_STACK_SIZE);
+		if (new_stack)
+		{
+			current->stack = new_stack;
+			current->stack_size = MAIN_STACK_SIZE;
+			current->flags |= THD_OWNS_STACK;
+		}
+	}
+}
+
+static int DC_HeapSize (void)
+{
+	const size_t reserve = 3 * 1024 * 1024;	/* 3MB (particle cap freed hunk to afford this) */
+	const size_t floor   = MINIMUM_MEMORY_LEVELPAK;	/* never return less than Quake requires */
+	const size_t ceiling = 8 * 1024 * 1024;	/* cap the hunk so GLdc's per-frame vertex
+						   buffer has room. 7MB was too tight (Cache_TryAlloc
+						   failed); 8MB fits map + model cache. */
+	uintptr_t brk = (uintptr_t) sbrk (0);
+	size_t avail;
+
+	if (brk == 0 || brk == (uintptr_t)-1 || brk >= _arch_mem_top)
+		return (int) floor;
+
+	avail = (size_t) (_arch_mem_top - brk);
+	if (avail > reserve + floor)
+		avail -= reserve;
+	if (avail > ceiling)
+		avail = ceiling;
+	if (avail < floor)
+		avail = floor;
+
+	return (int) avail;
+}
 #endif
 
 static void Sys_AtExit (void)
@@ -77,8 +129,17 @@ int main(int argc, char *argv[])
 	int		t;
 	double		time, oldtime, newtime;
 
+#if defined(PLATFORM_DREAMCAST)
+	DC_InitThreadStack ();
+	SDL_SetHint ("SDL_DC_VIDEO_MODE", "SDL_DC_OPENGL_VIDEO");
+#endif
+
 	host_parms = &parms;
+#if defined(PLATFORM_DREAMCAST)
+	parms.basedir = "/cd";
+#else
 	parms.basedir = ".";
+#endif
 
 	parms.argc = argc;
 	parms.argv = argv;
@@ -95,7 +156,11 @@ int main(int argc, char *argv[])
 
 	Sys_Printf("Initializing QuakeSpasm v%s\n", QUAKESPASM_VER_STRING);
 
+#if defined(PLATFORM_DREAMCAST)
+	parms.memsize = DC_HeapSize ();
+#else
 	parms.memsize = DEFAULT_MEMORY;
+#endif
 	if (COM_CheckParm("-heapsize"))
 	{
 		t = COM_CheckParm("-heapsize") + 1;
