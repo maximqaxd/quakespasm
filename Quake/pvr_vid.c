@@ -96,9 +96,8 @@ void GL_EndRendering (void)
 {
 	if (!scr_skipupdate)
 	{
-		// STEP 1 smoke test: prove init+scene+list+DR+swap end-to-end. Replaced
-		// by real geometry once the render modules are wired.
-		PVR_DrawTestTriangle ();
+		// 2D (pvr_draw) has submitted the frame's geometry into the TR list between
+		// BeginFrame and here; just close the scene and swap.
 		PVR_EndFrame ();
 	}
 }

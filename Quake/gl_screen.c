@@ -1062,7 +1062,13 @@ void SCR_UpdateScreen (void)
 //
 	SCR_SetUpToDrawConsole ();
 
+#if defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER)
+	// The native PVR renderer doesn't drive 3D yet (pvr_rmain/rsurf are still being
+	// built) and GLdc is not initialized on this path, so skip the 3D refresh to
+	// boot straight to the 2D console/HUD. Remove once pvr_rmain lands.
+#else
 	V_RenderView ();
+#endif
 
 	GL_Set2D ();
 
