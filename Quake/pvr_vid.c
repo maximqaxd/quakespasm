@@ -27,9 +27,24 @@ pipeline; that call is removed once pvr_rmain/pvr_rsurf drive real geometry.
 //------------------------------------------------------------------------------
 // Globals other translation units reference (gl_vidsdl.c defined these).
 //------------------------------------------------------------------------------
+viddef_t	vid;				// global video state
+modestate_t	modestate = MS_UNINIT;
 qboolean	scr_skipupdate;
 int		gl_stencilbits;
 float		gl_max_anisotropy;
+GLint		gl_max_texture_units = 0;
+
+// GLdc extension proc pointers other TUs link against. Unused on the PVR path
+// (no multitexture / VBO), kept NULL so the still-compiled gl_ render modules link.
+PFNGLMULTITEXCOORD2FARBPROC	GL_MTexCoord2fFunc = NULL;
+PFNGLACTIVETEXTUREARBPROC	GL_SelectTextureFunc = NULL;
+PFNGLCLIENTACTIVETEXTUREARBPROC	GL_ClientActiveTextureFunc = NULL;
+PFNGLBINDBUFFERARBPROC		GL_BindBufferFunc = NULL;
+PFNGLBUFFERDATAARBPROC		GL_BufferDataFunc = NULL;
+PFNGLBUFFERSUBDATAARBPROC	GL_BufferSubDataFunc = NULL;
+PFNGLDELETEBUFFERSARBPROC	GL_DeleteBuffersFunc = NULL;
+PFNGLGENBUFFERSARBPROC		GL_GenBuffersFunc = NULL;
+QS_PFNGENERATEMIPMAP		GL_GenerateMipmap = NULL;
 
 // GL capability flags: none apply to the PVR path, but non-render TUs still read
 // some of them, so keep them defined and false.

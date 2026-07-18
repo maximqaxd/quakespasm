@@ -96,6 +96,7 @@ endif
 SYSOBJ_CDA   = cd_sdl.o
 SYSOBJ_INPUT = in_sdl.o
 SYSOBJ_GL_VID= gl_vidsdl.o
+SYSOBJ_TEXMGR= gl_texmgr.o
 SYSOBJ_NET   = net_bsd.o net_udp.o
 SYSOBJ_SYS   = pl_linux.o sys_sdl_unix.o
 SYSOBJ_MAIN  = main_sdl.o
@@ -103,7 +104,7 @@ SYSOBJ_MAIN  = main_sdl.o
 GLOBJS = \
 	gl_refrag.o gl_rlight.o gl_rmain.o gl_fog.o gl_rmisc.o \
 	r_part.o r_world.o gl_screen.o gl_sky.o gl_warp.o \
-	$(SYSOBJ_GL_VID) gl_draw.o image.o gl_texmgr.o gl_mesh.o \
+	$(SYSOBJ_GL_VID) gl_draw.o image.o $(SYSOBJ_TEXMGR) gl_mesh.o \
 	r_sprite.o r_alias.o r_brush.o gl_model.o
 
 # ---------------------------
@@ -118,10 +119,12 @@ PVR_OBJS =
 ifeq ($(USE_PVR_RENDER),1)
 CFLAGS  += -DUSE_PVR_RENDER
 PVR_OBJS = pvr_backend.o pvr_rmath.o pvr_alloc.o pvr_image.o pvr_context.o pvr_clip.o
-# Swap the SDL/GLdc video driver for the native PVR one. (The gl_ render modules
-# are swapped for pvr_ ones in later steps; until then the binary links but the
-# still-GLdc render path won't run without GLdc init -- not yet bootable.)
+# Swap the SDL/GLdc video driver for the native PVR one, and the GL texture
+# manager for the PVR-native one (uploads to VRAM, no glTexImage2D). (The gl_
+# render modules are swapped for pvr_ ones in later steps; until then the binary
+# links but the still-GLdc render path won't run -- not yet bootable.)
 SYSOBJ_GL_VID = pvr_vid.o
+SYSOBJ_TEXMGR = pvr_texmgr.o
 endif
 
 OBJS = strlcat.o strlcpy.o $(PVR_OBJS) \

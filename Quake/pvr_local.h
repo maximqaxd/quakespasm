@@ -114,9 +114,26 @@ void	PVR_SetViewport (int x, int y, int w, int h);
 //==============================================================================
 struct gltexture_s;
 void	PVR_TexAlloc_Init (void);
+
+// VRAM allocator (pvr_alloc.c) -- thin wrappers over pvr_mem_malloc/free for now.
+void   *PVR_VramAlloc (unsigned bytes);		// returns pvr_ptr_t (NULL on OOM)
+void	PVR_VramFree (void *ptr);
+
+// Texture upload (pvr_image.c). The gltexture_t receives a VRAM pointer (pvr_vram)
+// + a compiled PVR_TXRFMT_* (pvr_fmt). Two entry points by source pixel type:
+//   - PVR_UploadTexture:    32-bit RGBA source, converted to RGB565 (opaque) or
+//                           ARGB4444 (when flags has TEXPREF_ALPHA).
+//   - PVR_UploadTexture565: source already 16-bit RGB565 (lightmaps), uploaded as-is.
+// Both expect power-of-two w,h (TexMgr pads before calling). Re-upload frees any
+// previous VRAM first.
 void	PVR_UploadTexture (struct gltexture_s *glt, const void *rgba, int w, int h, unsigned flags);
+void	PVR_UploadTexture565 (struct gltexture_s *glt, const void *rgb565, int w, int h);
 void	PVR_FreeTexture (struct gltexture_s *glt);
-void	PVR_BindTexture (struct gltexture_s *glt);	// selects the compiled cxt for next batch
+void	PVR_BindTexture (struct gltexture_s *glt);	// records the bound texture for the context cache
+
+// The texture the render path should sample next (set by GL_Bind -> PVR_BindTexture).
+// pvr_context reads this when compiling the poly header. NULL = untextured.
+extern struct gltexture_s *pvr_bound_texture;
 
 //==============================================================================
 // context cache  (pvr_context.c)

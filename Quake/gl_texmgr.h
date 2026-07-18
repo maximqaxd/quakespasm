@@ -63,6 +63,12 @@ typedef struct gltexture_s {
 	signed char			pants; //0-13 pants color, or -1 if never colormapped
 //used for rendering
 	int			visframe; //matches r_framecount if texture was bound this frame
+#if defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER)
+	// native PVR backend (pvr_texmgr.c): VRAM pointer + compiled sampling state.
+	// void*/unsigned so this header needn't pull <dc/pvr.h> (its HZ clash).
+	void			*pvr_vram;	// pvr_ptr_t, NULL until uploaded
+	unsigned		pvr_fmt;	// PVR_TXRFMT_* (with twiddle/size bits)
+#endif
 } gltexture_t;
 
 extern gltexture_t *notexture;
