@@ -106,7 +106,25 @@ GLOBJS = \
 	$(SYSOBJ_GL_VID) gl_draw.o image.o gl_texmgr.o gl_mesh.o \
 	r_sprite.o r_alias.o r_brush.o gl_model.o
 
-OBJS = strlcat.o strlcpy.o \
+# ---------------------------
+# Native PVR renderer (WIP) -- direct Tile-Accelerator submission that replaces
+# GLdc's grow-forever main-RAM vertex lists. Opt-in while it's being built:
+#   make -f Makefile.dreamcast USE_PVR_RENDER=1
+# For now it just compiles the pvr_*.o modules alongside the GLdc build so we can
+# grow them incrementally; the engine still renders through GLdc until wired in.
+# ---------------------------
+USE_PVR_RENDER ?= 0
+PVR_OBJS =
+ifeq ($(USE_PVR_RENDER),1)
+CFLAGS  += -DUSE_PVR_RENDER
+PVR_OBJS = pvr_backend.o pvr_rmath.o pvr_alloc.o pvr_image.o pvr_context.o pvr_clip.o
+# Swap the SDL/GLdc video driver for the native PVR one. (The gl_ render modules
+# are swapped for pvr_ ones in later steps; until then the binary links but the
+# still-GLdc render path won't run without GLdc init -- not yet bootable.)
+SYSOBJ_GL_VID = pvr_vid.o
+endif
+
+OBJS = strlcat.o strlcpy.o $(PVR_OBJS) \
 	$(GLOBJS) \
 	$(SYSOBJ_INPUT) $(COMOBJ_SND) $(SYSOBJ_SND) $(SYSOBJ_CDA) \
 	$(SYSOBJ_NET) net_dgrm.o net_loop.o net_main.o \
