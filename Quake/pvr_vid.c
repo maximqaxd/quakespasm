@@ -96,8 +96,8 @@ void GL_EndRendering (void)
 {
 	if (!scr_skipupdate)
 	{
-		// 2D (pvr_draw) has submitted the frame's geometry into the TR list between
-		// BeginFrame and here; just close the scene and swap.
+		// Flush the pending 2D batch into the PT list, then close the scene + swap.
+		PVR_Flush2D ();
 		PVR_EndFrame ();
 	}
 }

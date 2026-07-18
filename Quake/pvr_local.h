@@ -87,6 +87,9 @@ void	PVR_ListBegin (int list);
 void	PVR_SetClearColor (float r, float g, float b);
 void	PVR_DrawTestTriangle (void);		// pipeline smoke test (step 1)
 
+// 2D (pvr_draw.c): flush the pending 2D batch into the TA. Called at end of frame.
+void	PVR_Flush2D (void);
+
 extern int	pvr_frame_list;			// currently open list, -1 if none
 
 //==============================================================================

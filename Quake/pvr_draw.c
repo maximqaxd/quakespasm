@@ -7,13 +7,21 @@ REPLACES gl_draw.c when USE_PVR_RENDER is set (the Makefile swaps the object).
 The pic caching / scrap / init half of gl_draw.c is renderer-agnostic (it all goes
 through TexMgr) and is kept verbatim. Only the actual submission changes: instead
 of GLdc immediate mode + glOrtho canvases, 2D quads are mapped to screen pixels by
-a per-canvas affine transform (derived from the same glOrtho+glViewport math) and
-fired into the PVR translucent list as triangle strips.
+a per-canvas affine transform (derived from the same glOrtho+glViewport math).
 
-All 2D lives in the TR list (drawn last, over the 3D scene). Cutouts (conchars,
-HUD pics) rely on the palette's alpha (index 255/0 -> alpha 0) blended with
-SRC_ALPHA/INV_SRC_ALPHA; solid fills/fades use the vertex color's alpha. A tiny
-per-quad depth increment preserves submission (painter) order under TR autosort.
+2D goes in the PUNCH-THROUGH list (PVR_LIST_PT_POLY), like xash3d_dc: PT renders in
+submission order (no autosort) yet still blends, so painter ordering is exact and
+depth is forced ALWAYS-pass / no-write. Quads are BATCHED into a RAM array and
+flushed (one poly header + all verts, fired through the store queues) whenever the
+texture/blend/env state changes or at end of frame -- so a whole console line or
+status bar is one header, not one per glyph. Cutouts (conchars, HUD pics) come from
+the palette alpha (index 255/0 -> 0) blended SRC_ALPHA/INV_SRC_ALPHA; solid
+fills/fades from the vertex color alpha; opaque tiles use REPLACE + ONE/ZERO.
+
+The framebuffer swap is KOS's: PVR_BeginFrame does pvr_wait_ready + pvr_scene_begin,
+PVR_EndFrame does pvr_list_finish + pvr_scene_finish (double-buffered via the
+numpages passed to pvr_init). PVR_Flush2D is called from GL_EndRendering so the
+final batch reaches the TA before the scene closes.
 ================================================================================
 */
 #include "pvr_local.h"		// dc/pvr.h before quakedef.h (HZ), pulls quakedef too
@@ -111,10 +119,6 @@ canvastype currentcanvas = CANVAS_NONE; //johnfitz -- for GL_SetCanvas
 // Per-canvas screen-space affine: screen_x = cx*c_sx + c_tx, screen_y = cy*c_sy + c_ty
 static float	c_sx = 1.0f, c_tx = 0.0f, c_sy = 1.0f, c_ty = 0.0f;
 
-// Painter-order depth: bumped a hair per quad so later 2D draws sort in front under
-// the TR autosort (z is 1/w, larger == nearer). Reset each frame in GL_Set2D.
-static float	draw2d_z = 1.0f;
-
 static void PVR_SetCanvasXform (float l, float r, float b, float t,
 				float vx, float vy, float vw, float vh)
 {
@@ -126,51 +130,125 @@ static void PVR_SetCanvasXform (float l, float r, float b, float t,
 	c_ty = ((float)glheight - vy) - b * c_sy;
 }
 
+//------------------------------------------------------------------------------
+// 2D batch -- accumulate quads, flush one header + all verts on state change
+//------------------------------------------------------------------------------
+#define MAX_2D_QUADS	512
+#define MAX_2D_VERTS	(MAX_2D_QUADS * 4)
+
+static pvr_vertex_t	batch_v[MAX_2D_VERTS];
+static int		batch_n;		// verts pending
+static gltexture_t	*batch_tex;		// current batch texture (NULL = untextured)
+static int		batch_env, batch_bsrc, batch_bdst;
+static qboolean		batch_valid;		// batch_* state initialized
+
+static pvr_blend_mode_t PVR_MapBlend2D (int glfactor)
+{
+	switch (glfactor)
+	{
+	case GL_ZERO:			return PVR_BLEND_ZERO;
+	case GL_ONE:			return PVR_BLEND_ONE;
+	case GL_SRC_ALPHA:		return PVR_BLEND_SRCALPHA;
+	case GL_ONE_MINUS_SRC_ALPHA:	return PVR_BLEND_INVSRCALPHA;
+	case GL_DST_COLOR:		return PVR_BLEND_DESTCOLOR;
+	default:			return PVR_BLEND_ONE;
+	}
+}
+
+static void Batch_Flush (void)
+{
+	pvr_poly_cxt_t	cxt;
+	pvr_poly_hdr_t	*hdr;
+	pvr_vertex_t	*vp;
+	int		i;
+
+	if (batch_n == 0)
+		return;
+
+	PVR_ListBegin (PVR_LIST_PT_POLY);	// idempotent within a frame
+
+	if (batch_tex && batch_tex->pvr_vram)
+	{
+		pvr_poly_cxt_txr (&cxt, PVR_LIST_PT_POLY, (int)batch_tex->pvr_fmt,
+				  (int)batch_tex->width, (int)batch_tex->height,
+				  (pvr_ptr_t)batch_tex->pvr_vram,
+				  (batch_tex->flags & TEXPREF_NEAREST) ? PVR_FILTER_NEAREST : PVR_FILTER_BILINEAR);
+		cxt.txr.env = (batch_env == GL_REPLACE) ? PVR_TXRENV_REPLACE : PVR_TXRENV_MODULATE;
+	}
+	else
+	{
+		pvr_poly_cxt_col (&cxt, PVR_LIST_PT_POLY);
+	}
+
+	cxt.gen.culling = PVR_CULLING_NONE;
+	cxt.gen.alpha = true;			// enable the blend unit
+	cxt.blend.src = PVR_MapBlend2D (batch_bsrc);
+	cxt.blend.dst = PVR_MapBlend2D (batch_bdst);
+	// 2D always draws over the scene: pass depth unconditionally, never write it.
+	cxt.depth.comparison = PVR_DEPTHCMP_ALWAYS;
+	cxt.depth.write = false;
+
+	hdr = (pvr_poly_hdr_t *) pvr_dr_target (NULL);
+	pvr_poly_compile (hdr, &cxt);
+	pvr_dr_commit (hdr);
+
+	for (i = 0; i < batch_n; i++)
+	{
+		vp = (pvr_vertex_t *) pvr_dr_target (NULL);
+		*vp = batch_v[i];
+		pvr_dr_commit (vp);
+	}
+
+	batch_n = 0;
+}
+
+static void Batch_SetState (gltexture_t *tex, int env, int bsrc, int bdst)
+{
+	if (!batch_valid || tex != batch_tex || env != batch_env ||
+	    bsrc != batch_bsrc || bdst != batch_bdst)
+	{
+		Batch_Flush ();
+		batch_tex  = tex;
+		batch_env  = env;
+		batch_bsrc = bsrc;
+		batch_bdst = bdst;
+		batch_valid = true;
+	}
+}
+
 static void PVR_EmitQuad (gltexture_t *tex, int env, int bsrc, int bdst,
 			  float x0, float y0, float x1, float y1,
 			  float s0, float t0, float s1, float t1, uint32_t argb)
 {
-	pvr_vertex_t	*vp;
-	float		ax0, ay0, ax1, ay1, z;
+	pvr_vertex_t	*v;
+	float		ax0, ay0, ax1, ay1;
 
-	PVR_ListBegin (PVR_LIST_TR_POLY);
+	Batch_SetState (tex, env, bsrc, bdst);
 
-	if (tex)
-		GL_Bind (tex);
-	else
-		PVR_BindTexture (NULL);
-	PVR_SetTexEnv (env);
-	PVR_SetBlend (bsrc, bdst);
-	PVR_FlushState ();		// compiles + submits the poly header if state changed
+	if (batch_n + 4 > MAX_2D_VERTS)
+		Batch_Flush ();
 
 	ax0 = x0 * c_sx + c_tx;  ay0 = y0 * c_sy + c_ty;
 	ax1 = x1 * c_sx + c_tx;  ay1 = y1 * c_sy + c_ty;
 
-	z = draw2d_z;
-	draw2d_z += 1.0f / 65536.0f;
+	v = &batch_v[batch_n];
+	// triangle strip: TL, TR, BL, BR
+	v[0].flags = PVR_CMD_VERTEX;     v[0].x = ax0; v[0].y = ay0; v[0].z = 1.0f; v[0].u = s0; v[0].v = t0; v[0].argb = argb; v[0].oargb = 0;
+	v[1].flags = PVR_CMD_VERTEX;     v[1].x = ax1; v[1].y = ay0; v[1].z = 1.0f; v[1].u = s1; v[1].v = t0; v[1].argb = argb; v[1].oargb = 0;
+	v[2].flags = PVR_CMD_VERTEX;     v[2].x = ax0; v[2].y = ay1; v[2].z = 1.0f; v[2].u = s0; v[2].v = t1; v[2].argb = argb; v[2].oargb = 0;
+	v[3].flags = PVR_CMD_VERTEX_EOL; v[3].x = ax1; v[3].y = ay1; v[3].z = 1.0f; v[3].u = s1; v[3].v = t1; v[3].argb = argb; v[3].oargb = 0;
+	batch_n += 4;
+}
 
-	// Fire the 4 strip verts (TL, TR, BL, BR) straight into the TA via the store
-	// queues: pvr_dr_target hands back a 32-byte-aligned slot (== sizeof(pvr_vertex_t)),
-	// write it, pvr_dr_commit flushes the SQ. No init/finish -- deprecated no-ops now.
-	vp = pvr_dr_target (NULL);
-	vp->flags = PVR_CMD_VERTEX;     vp->x = ax0; vp->y = ay0; vp->z = z;
-	vp->u = s0; vp->v = t0; vp->argb = argb; vp->oargb = 0;
-	pvr_dr_commit (vp);
-
-	vp = pvr_dr_target (NULL);
-	vp->flags = PVR_CMD_VERTEX;     vp->x = ax1; vp->y = ay0; vp->z = z;
-	vp->u = s1; vp->v = t0; vp->argb = argb; vp->oargb = 0;
-	pvr_dr_commit (vp);
-
-	vp = pvr_dr_target (NULL);
-	vp->flags = PVR_CMD_VERTEX;     vp->x = ax0; vp->y = ay1; vp->z = z;
-	vp->u = s0; vp->v = t1; vp->argb = argb; vp->oargb = 0;
-	pvr_dr_commit (vp);
-
-	vp = pvr_dr_target (NULL);
-	vp->flags = PVR_CMD_VERTEX_EOL; vp->x = ax1; vp->y = ay1; vp->z = z;
-	vp->u = s1; vp->v = t1; vp->argb = argb; vp->oargb = 0;
-	pvr_dr_commit (vp);
+/*
+================
+PVR_Flush2D -- emit any pending 2D batch (called at end of frame from GL_EndRendering)
+================
+*/
+void PVR_Flush2D (void)
+{
+	Batch_Flush ();
+	batch_valid = false;
 }
 
 //==============================================================================
@@ -715,7 +793,8 @@ void GL_Set2D (void)
 {
 	currentcanvas = CANVAS_INVALID;
 	GL_SetCanvas (CANVAS_DEFAULT);
-	draw2d_z = 1.0f;		// restart painter-order depth for this frame's 2D
+	batch_n = 0;			// start this frame's 2D batch fresh
+	batch_valid = false;
 }
 
 #endif	/* PLATFORM_DREAMCAST && USE_PVR_RENDER */
