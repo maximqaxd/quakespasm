@@ -15,6 +15,7 @@ list open/close is wired so the render modules can start submitting via pvr_dr.
 #if defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER)
 
 int	pvr_frame_list = -1;
+float	pvr_depth_bias = 0.0f;		// added to submitted 1/w (view weapon lifts itself above the world)
 
 static unsigned	pvr_lists_done;		// bitmask of lists already finished this frame
 static qboolean	pvr_inited;
@@ -131,6 +132,7 @@ void PVR_BeginFrame (void)
 	pvr_scene_begin ();
 	pvr_frame_list = -1;
 	pvr_lists_done = 0;
+	pvr_depth_bias = 0.0f;
 }
 
 void PVR_ListBegin (int list)

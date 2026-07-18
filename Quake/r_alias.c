@@ -1016,16 +1016,18 @@ void PVR_DrawAliasModel (entity_t *e, int passkind)
 	aliashdr_t		*paliashdr;
 	lerpdata_t		lerpdata;
 	int			anim, skinnum, j, nverts;
-	gltexture_t		*tx;
+	gltexture_t		*tx, *fb, *submit_tx;
 	float			fovscale = 1.0f;
 	trivertx_t		*pv1, *pv2;
-	qboolean		dolerp;
+	qboolean		dolerp, glow;
 	float			bl, ibl;
 	const float		*st;
 	const unsigned short	*idx;
 	int			a8;
+	uint32_t		glowcol;
 
 	currententity = e;	// R_SetupAliasFrame / R_SetupAliasLighting read the global
+	glow = (passkind == PVR_ALIAS_GLOW);
 
 	paliashdr = (aliashdr_t *)Mod_Extradata (e->model);
 	R_SetupAliasFrame (paliashdr, e->frame, &lerpdata);
@@ -1050,9 +1052,21 @@ void PVR_DrawAliasModel (entity_t *e, int passkind)
 	if (skinnum >= paliashdr->numskins || skinnum < 0)
 		skinnum = 0;
 	tx = paliashdr->gltextures[skinnum][anim];
+	fb = paliashdr->fbtextures[skinnum][anim];
 	if (e->colormap != vid.colormap && !gl_nocolors.value)
 		if ((uintptr_t)e >= (uintptr_t)&cl_entities[1] && (uintptr_t)e <= (uintptr_t)&cl_entities[cl.maxclients])
 			tx = playertextures[e - cl_entities - 1];
+
+	// The glow pass is an additive overlay of the luma skin; nothing to do without
+	// one (or when fullbrights are off). Otherwise use the base skin, lit.
+	if (glow)
+	{
+		if (!fb || !gl_fullbrights.value)
+			return;
+		submit_tx = fb;
+	}
+	else
+		submit_tx = tx;
 
 	// wide-fov view weapon shrink (matches R_DrawAliasModel)
 	if (e == &cl.viewent && scr_fov.value > 90.f && cl_gun_fovscale.value)
@@ -1078,11 +1092,14 @@ void PVR_DrawAliasModel (entity_t *e, int passkind)
 	a8 = (int)(entalpha * 255.0f);
 	if (a8 > 255) a8 = 255; else if (a8 < 0) a8 = 0;
 
+	// glow pass: flat luma * entalpha (matches GL's glColor3f(entalpha,...) + additive);
+	// no lighting -- the luma skin is fullbright and black everywhere else.
+	glowcol = 0xff000000u | ((uint32_t)a8 << 16) | ((uint32_t)a8 << 8) | (uint32_t)a8;
+
 	for (j = 0; j < nverts; j++)
 	{
 		trivertx_t	*va = pv1 + j;
-		float		px, py, pz, l;
-		int		r, g, b;
+		float		px, py, pz;
 
 		if (dolerp)
 		{
@@ -1091,31 +1108,46 @@ void PVR_DrawAliasModel (entity_t *e, int passkind)
 			shz_vec3_t	B = shz_vec3_init (vb->v[0], vb->v[1], vb->v[2]);
 			shz_vec3_t	P = shz_vec3_lerp (A, B, bl);
 			px = P.x; py = P.y; pz = P.z;
-			l = shadedots[va->lightnormalindex] * ibl + shadedots[vb->lightnormalindex] * bl;
 		}
 		else
 		{
 			px = va->v[0]; py = va->v[1]; pz = va->v[2];
-			l = shadedots[va->lightnormalindex];
 		}
 
 		dc_posbuf[j * 3 + 0] = px;
 		dc_posbuf[j * 3 + 1] = py;
 		dc_posbuf[j * 3 + 2] = pz;
 
-		r = (int)(l * lightcolor[0] * 255.0f); if (r > 255) r = 255; else if (r < 0) r = 0;
-		g = (int)(l * lightcolor[1] * 255.0f); if (g > 255) g = 255; else if (g < 0) g = 0;
-		b = (int)(l * lightcolor[2] * 255.0f); if (b > 255) b = 255; else if (b < 0) b = 0;
-		dc_argbbuf[j] = ((uint32_t)a8 << 24) | ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)b;
+		if (glow)
+		{
+			dc_argbbuf[j] = glowcol;
+		}
+		else
+		{
+			float	l = dolerp
+				? shadedots[va->lightnormalindex] * ibl + shadedots[(pv2 + j)->lightnormalindex] * bl
+				: shadedots[va->lightnormalindex];
+			int	r, g, b;
+			r = (int)(l * lightcolor[0] * 255.0f); if (r > 255) r = 255; else if (r < 0) r = 0;
+			g = (int)(l * lightcolor[1] * 255.0f); if (g > 255) g = 255; else if (g < 0) g = 0;
+			b = (int)(l * lightcolor[2] * 255.0f); if (b > 255) b = 255; else if (b < 0) b = 0;
+			dc_argbbuf[j] = ((uint32_t)a8 << 24) | ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)b;
+		}
 	}
 
 	st  = (const float *)((byte *)paliashdr + paliashdr->st_dc);
 	idx = (const unsigned short *)((byte *)paliashdr + paliashdr->idx_dc);
 
+	// View weapon: lift its depth above the world so it never pokes through walls
+	// (W-buffer analog of GL's glDepthRange(0,0.3)). Same bias for its glow pass.
+	pvr_depth_bias = (e == &cl.viewent) ? PVR_VIEWMODEL_DEPTH_BIAS : 0.0f;
+
 	PVR_SetupAliasMatrices (lerpdata.origin, lerpdata.angles, e->scale,
 				paliashdr->scale, paliashdr->scale_origin, fovscale);
-	PVR_SubmitAliasFrame (dc_posbuf, st, dc_argbbuf, idx, nverts, paliashdr->numtris, tx, passkind);
+	PVR_SubmitAliasFrame (dc_posbuf, st, dc_argbbuf, idx, nverts, paliashdr->numtris, submit_tx, passkind);
 	PVR_RestoreWorldMatrix ();
+
+	pvr_depth_bias = 0.0f;
 
 	rs_aliaspolys += paliashdr->numtris;
 	rs_aliaspasses += paliashdr->numtris;

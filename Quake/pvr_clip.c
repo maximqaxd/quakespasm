@@ -80,7 +80,7 @@ static inline void SubmitVert (const clipvert_t *cv, uint32_t flags)
 	vert->flags = flags;
 	vert->x = cv->pos.x * invw;
 	vert->y = cv->pos.y * invw;
-	vert->z = invw;
+	vert->z = invw + pvr_depth_bias;	// view weapon lifts itself above world depth
 	vert->u = cv->u;
 	vert->v = cv->v;
 	vert->argb = cv->argb;

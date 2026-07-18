@@ -820,6 +820,32 @@ void PVR_DrawAliasEnts_Translucent (void)
 		PVR_DrawAliasModel (e, PVR_ALIAS_TRANS);
 	}
 }
+
+// Additive fullbright/luma overlay for every alias model with a glow skin (glowing
+// eyes, enforcer laser, etc.). Runs in the TR phase over ALL alias ents regardless
+// of their base phase; PVR_DrawAliasModel no-ops any entity without a glow skin.
+void PVR_DrawAliasEnts_Fullbright (void)
+{
+	int	i;
+
+	if (!r_drawentities.value || !gl_fullbrights.value)
+		return;
+	for (i = 0; i < cl_numvisedicts; i++)
+	{
+		entity_t *e = cl_visedicts[i];
+		if (!e->model || e->model->type != mod_alias)
+			continue;
+		PVR_DrawAliasModel (e, PVR_ALIAS_GLOW);
+	}
+
+	// the view weapon (matches PVR_DrawAliasEnts_Opaque's gating)
+	if (r_drawviewmodel.value && r_drawentities.value && !chase_active.value
+	    && !(cl.items & IT_INVISIBILITY) && cl.stats[STAT_HEALTH] > 0
+	    && cl.viewent.model && cl.viewent.model->type == mod_alias)
+	{
+		PVR_DrawAliasModel (&cl.viewent, PVR_ALIAS_GLOW);
+	}
+}
 #endif	/* PLATFORM_DREAMCAST && USE_PVR_RENDER */
 
 /*
@@ -1099,6 +1125,7 @@ void R_RenderScene (void)
 	PVR_DrawWorld_Fullbright (cl.worldmodel); // world glow/luma maps
 	PVR_DrawBrushEnts_Fullbright ();          // brush ents: glow
 	PVR_DrawAliasEnts_Translucent ();         // alias models: entity-alpha blends
+	PVR_DrawAliasEnts_Fullbright ();          // alias models: additive luma overlay
 
 	// --- PT: alpha-tested cutouts (with the 2D HUD, which renders last) ---
 	PVR_DrawAliasEnts_Holey ();               // alias models: MF_HOLEY cutouts

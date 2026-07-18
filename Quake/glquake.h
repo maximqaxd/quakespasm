@@ -450,12 +450,20 @@ void PVR_DrawBrushEnts_Fullbright (void);
 #define PVR_ALIAS_OPAQUE	0	// OP list, opaque
 #define PVR_ALIAS_HOLEY		1	// PT list, alpha-tested cutout (MF_HOLEY)
 #define PVR_ALIAS_TRANS		2	// TR list, entity-alpha blend
+#define PVR_ALIAS_GLOW		3	// TR list, additive fullbright/luma skin overlay
+// View-weapon depth bias: the PVR W-buffer stores 1/w (nearer == larger), and
+// near-clipped world geometry maxes out at 1/NEARCLIP == 0.25. Adding this to the
+// gun's submitted depth lifts it above every world fragment so it wins GEQUAL and
+// never pokes through walls -- the W-buffer analog of GL's glDepthRange(0,0.3).
+#define PVR_VIEWMODEL_DEPTH_BIAS	8.0f
+extern float pvr_depth_bias;		// added to each submitted vertex's 1/w (0 normally)
 void PVR_SetupAliasMatrices (vec3_t origin, vec3_t angles, unsigned char scale, vec3_t hdr_scale, vec3_t hdr_scale_origin, float fovscale);
 void PVR_SubmitAliasFrame (const float *pos, const float *st, const uint32_t *argb, const unsigned short *idx, int numverts, int numtris, struct gltexture_s *tx, int passkind);
 void PVR_DrawAliasModel (entity_t *e, int passkind);
 void PVR_DrawAliasEnts_Opaque (void);
 void PVR_DrawAliasEnts_Holey (void);
 void PVR_DrawAliasEnts_Translucent (void);
+void PVR_DrawAliasEnts_Fullbright (void);
 // brush-model entities: object transform + their solid/liquid surface chains
 void PVR_SetupEntityMatrices (vec3_t origin, vec3_t angles, unsigned char scale);
 void PVR_RestoreWorldMatrix (void);

@@ -43,7 +43,7 @@ static unsigned char	pa_vis[PVR_ALIAS_MAXVERTS];	// 1 = in front of the near pla
 		vp->flags = (cmd);						\
 		vp->x = pa_clip[slot].x * iw;					\
 		vp->y = pa_clip[slot].y * iw;					\
-		vp->z = iw;							\
+		vp->z = iw + pvr_depth_bias;					\
 		vp->u = st[(slot) * 2 + 0];					\
 		vp->v = st[(slot) * 2 + 1];					\
 		vp->argb = argb[slot];						\
@@ -81,6 +81,9 @@ void PVR_SubmitAliasFrame (const float *pos, const float *st, const uint32_t *ar
 	case PVR_ALIAS_TRANS:	// entity alpha < 1 (spawn shimmer, etc.)
 		list = PVR_LIST_TR_POLY; sblend = GL_SRC_ALPHA; dblend = GL_ONE_MINUS_SRC_ALPHA;
 		env = PVR_TEXENV_MODULATEALPHA;
+		break;
+	case PVR_ALIAS_GLOW:	// additive fullbright/luma overlay (glowing eyes, laser)
+		list = PVR_LIST_TR_POLY; sblend = GL_ONE; dblend = GL_ONE; env = GL_MODULATE;
 		break;
 	default:		// opaque
 		list = PVR_LIST_OP_POLY; sblend = GL_ONE; dblend = GL_ZERO; env = GL_MODULATE;
