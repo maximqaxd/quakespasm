@@ -22,7 +22,8 @@ GL "texnum" is kept only as a cheap identity for GL_Bind's redundant-bind filter
 static cvar_t	gl_texturemode = {"gl_texturemode", "", CVAR_ARCHIVE};
 static cvar_t	gl_texture_anisotropy = {"gl_texture_anisotropy", "1", CVAR_ARCHIVE};
 static cvar_t	gl_max_size = {"gl_max_size", "0", CVAR_NONE};
-static cvar_t	gl_picmip = {"gl_picmip", "1", CVAR_NONE};
+static cvar_t	gl_picmip = {"gl_picmip", "0", CVAR_NONE};	// full-res textures on PVR
+static cvar_t	gl_picmip_models = {"gl_picmip_models", "1", CVAR_NONE};	// halve alias skins (VRAM)
 static GLint	gl_hardware_maxsize = 1024;	// PVR max texture dimension
 
 #define	MAX_GLTEXTURES	1024
@@ -478,6 +479,7 @@ void TexMgr_Init (void)
 
 	Cvar_RegisterVariable (&gl_max_size);
 	Cvar_RegisterVariable (&gl_picmip);
+	Cvar_RegisterVariable (&gl_picmip_models);
 	Cvar_RegisterVariable (&gl_texture_anisotropy);
 	Cvar_SetCallback (&gl_texture_anisotropy, &TexMgr_Anisotropy_f);
 	gl_texturemode.string = glmodes[glmode_idx].name;
@@ -787,6 +789,28 @@ static byte *TexMgr_PadImageH (byte *in, int width, int height, byte padbyte)
 
 /*
 ================
+TexMgr_PicmipFor -- picmip level for a texture
+
+gl_picmip applies to everything (0 by default on DC -- full res). Alias model
+skins additionally honor gl_picmip_models so the many large monster/item skins
+can be halved for VRAM without touching world/HUD resolution. NOPICMIP always
+wins (full size).
+================
+*/
+static int TexMgr_PicmipFor (gltexture_t *glt)
+{
+	int	p;
+
+	if (glt->flags & TEXPREF_NOPICMIP)
+		return 0;
+	p = q_max ((int)gl_picmip.value, 0);
+	if (glt->flags & TEXPREF_MDLSKIN)
+		p = q_max (p, q_max ((int)gl_picmip_models.value, 0));
+	return p;
+}
+
+/*
+================
 TexMgr_LoadImage32 -- process 32bit RGBA then upload to VRAM
 ================
 */
@@ -802,7 +826,7 @@ static void TexMgr_LoadImage32 (gltexture_t *glt, unsigned *data)
 	}
 
 	// mipmap down to the picmip'd / hardware-safe size
-	picmip = (glt->flags & TEXPREF_NOPICMIP) ? 0 : q_max((int)gl_picmip.value, 0);
+	picmip = TexMgr_PicmipFor (glt);
 	mipwidth = TexMgr_SafeTextureSize (glt->width >> picmip);
 	mipheight = TexMgr_SafeTextureSize (glt->height >> picmip);
 	while ((int) glt->width > mipwidth)
@@ -866,7 +890,7 @@ static void TexMgr_LoadImageIndexed (gltexture_t *glt, byte *data, int palbank)
 {
 	int picmip, mipwidth, mipheight;
 
-	picmip = (glt->flags & TEXPREF_NOPICMIP) ? 0 : q_max((int)gl_picmip.value, 0);
+	picmip = TexMgr_PicmipFor (glt);
 	mipwidth  = TexMgr_SafeTextureSize (glt->width >> picmip);
 	mipheight = TexMgr_SafeTextureSize (glt->height >> picmip);
 

@@ -2983,6 +2983,10 @@ static void *Mod_LoadAllSkins (int numskins, daliasskintype_t *pskintype)
 	src_offset_t		offset; //johnfitz
 	unsigned int		texflags = TEXPREF_PAD;
 
+#if defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER)
+	texflags |= TEXPREF_MDLSKIN;	// let the PVR texmgr picmip model skins (gl_picmip_models)
+#endif
+
 	skin = (byte *)(pskintype + 1);
 
 	if (numskins < 1 || numskins > MAX_SKINS)

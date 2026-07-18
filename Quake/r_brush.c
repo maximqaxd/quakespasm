@@ -667,7 +667,9 @@ with all the surfaces from all brush models
 */
 void GL_BuildLightmaps (void)
 {
-	char	name[24];
+#if !(defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER))
+	char	name[24];	// lightmap texture names -- PVR path uploads no lightmaps
+#endif
 	int		i, j;
 	struct lightmap_s *lm;
 	qmodel_t	*m;
@@ -737,6 +739,16 @@ void GL_BuildLightmaps (void)
 		lm->rectchange.w = 0;
 		lm->rectchange.h = 0;
 
+#if defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER)
+		// The native PVR renderer lights surfaces per-vertex (PVR_LightVertex reads
+		// surf->samples directly), so the lightmap atlas is never sampled. Uploading
+		// it would waste VRAM (RGB565, 32KB per 128x128 block -- 1-2MB on big maps)
+		// that we need for full-res skins. Keep the atlas unbuilt in VRAM; free the
+		// RAM copy too.
+		lm->texture = NULL;
+		free (lm->data);
+		lm->data = NULL;
+#else
 		//johnfitz -- use texture manager
 		sprintf(name, "lightmap%07i",i);
 		lm->texture = TexMgr_LoadImage (cl.worldmodel, name, LMBLOCK_WIDTH, LMBLOCK_HEIGHT,
@@ -746,6 +758,7 @@ void GL_BuildLightmaps (void)
 		lm->texture->source_offset = 0;
 		free (lm->data);
 		lm->data = NULL;
+#endif
 #endif
 	}
 

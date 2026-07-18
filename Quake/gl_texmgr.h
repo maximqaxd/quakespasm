@@ -38,6 +38,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define TEXPREF_NOBRIGHT		0x0200	// use nobright mask palette
 #define TEXPREF_CONCHARS		0x0400	// use conchars palette
 #define TEXPREF_WARPIMAGE		0x0800	// resize this texture when warpimagesize changes
+#define TEXPREF_MDLSKIN			0x1000	// alias model skin (PVR: gets gl_picmip_models)
 
 enum srcformat {SRC_INDEXED, SRC_LIGHTMAP, SRC_RGBA, SRC_INDEXED_PALETTE};
 

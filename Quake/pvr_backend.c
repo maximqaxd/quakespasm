@@ -22,14 +22,16 @@ static qboolean	pvr_inited;
 static float	pvr_clear[3] = { 0.0f, 0.0f, 0.0f };
 
 // Proven config lifted from xash3d_dc (engine/platform/dreamcast/vid_dc.c):
-// small 8-word OPBs, a 768KB TA vertex buffer (lives in VRAM, not main RAM --
+// small 8-word OPBs, a small TA vertex buffer (lives in VRAM, not main RAM --
 // this is the whole point vs GLdc), autosort enabled (PVR sorts the TR list),
 // and 2 OPB-overflow sets to avoid tile-boundary flicker on heavy scenes.
+// Kept lean so full-res (gl_picmip 0) textures fit the 8MB VRAM: all bins 8-word,
+// 512KB vertex buffer. Bump these back up if dense scenes drop polys / flicker.
 static pvr_init_params_t pvr_params =
 {
 	/* opb_sizes: OP, OP-mod, TR, TR-mod, PT */
-	{ PVR_BINSIZE_16, PVR_BINSIZE_0, PVR_BINSIZE_8, PVR_BINSIZE_0, PVR_BINSIZE_8 },
-	4096 * 256,	/* vertex_buf_size = 1MB (VRAM) -- headroom for dense world scenes */
+	{ PVR_BINSIZE_8, PVR_BINSIZE_0, PVR_BINSIZE_8, PVR_BINSIZE_0, PVR_BINSIZE_8 },
+	512 * 1024,	/* vertex_buf_size = 512KB (VRAM) */
 	0,		/* dma_enabled */
 	0,		/* fsaa_enabled */
 	0,		/* autosort_disabled (0 = PVR autosorts translucents) */
