@@ -4,7 +4,7 @@ pvr_glstub.c -- no-op GLdc stubs for the native PVR build (maximqad)
 
 De-GLfying, step 1 (linking): the native PVR renderer no longer links libGL. But
 several render paths that aren't ported yet (alias models, sprites, particles,
-sky, fog, screen-scale) are still compiled and reference gl* / glKos* symbols.
+sky, fog, screen-scale) are still compiled and reference gl* symbols.
 Rather than keep linking GLdc -- whose entry points would crash if reached
 uninitialized -- we resolve those symbols here with harmless no-ops. Any not-yet-
 ported path that slips through simply draws nothing instead of hanging the TA.
@@ -90,7 +90,10 @@ void glVertex3fv (void) {}
 void glVertexPointer (void) {}
 void glViewport (void) {}
 
-// --- GLdc/KOS GL init + swap: never used on the PVR path (pvr_backend owns it) -
+// --- glKos*: NOT used by our renderer -- pvr_backend owns PVR init/swap now.
+// These exist solely to satisfy libSDL2's Dreamcast GL video backend
+// (SDL_dreamcastopengl.c), which the SDL video subsystem drags into the link
+// even though the PVR path never creates an SDL GL context. No-ops: never run.
 void glKosInit (void) {}
 void glKosInitEx (void) {}
 void glKosInitConfig (void) {}

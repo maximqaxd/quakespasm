@@ -3,7 +3,7 @@
 pvr_backend.c -- PVR frame/list driver (maximqad)
 
 Owns the KOS PVR init and the per-frame scene structure. Replaces GLdc's
-glKosInitEx + the SDL_GL swap in gl_vidsdl.c. See pvr_local.h for the big picture.
+init + the SDL_GL swap in gl_vidsdl.c. See pvr_local.h for the big picture.
 
 Fill status: STEP 1 skeleton. init + clear-screen swap should light up first;
 list open/close is wired so the render modules can start submitting via pvr_dr.

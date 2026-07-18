@@ -228,10 +228,15 @@ typedef struct
 
 #if defined(PLATFORM_DREAMCAST)
 #include <SDL2/SDL.h>
+#if defined(USE_PVR_RENDER)
+/* Native PVR build: no GLdc. Minimal own GL types/tokens/prototypes instead. */
+#include "gl_pvr_types.h"
+#else
 #include <GL/gl.h>
 #include <GL/glext.h>
 #include <GL/glkos.h>
 #include "gl_dc_compat.h"
+#endif
 #elif defined(SDL_FRAMEWORK) || defined(NO_SDL_CONFIG)
 #if defined(USE_SDL2)
 #ifdef __EMSCRIPTEN__
