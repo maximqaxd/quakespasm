@@ -270,10 +270,18 @@ void Cmd_Exec_f (void)
 	}
 
 	mark = Hunk_LowMark ();
+#if defined(PLATFORM_DREAMCAST)
+	if (!strcmp(Cmd_Argv(1), "default.cfg")) {
+		f = default_cfg;
+	} else {
+		f = (const char *)COM_LoadHunkFile (Cmd_Argv(1), NULL);
+	}
+#else
 	f = (const char *)COM_LoadHunkFile (Cmd_Argv(1), NULL);
 	if (!f && !strcmp(Cmd_Argv(1), "default.cfg")) {
 		f = default_cfg;	/* see above.. */
 	}
+#endif
 	if (!f)
 	{
 		Con_Printf ("couldn't exec %s\n",Cmd_Argv(1));

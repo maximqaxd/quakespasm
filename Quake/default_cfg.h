@@ -89,4 +89,35 @@ static const char default_cfg[] =
 "scr_menuscale 1.6\n"
 "scr_sbarscale 1.6\n"
 
-"+mlook\n";
+"+mlook\n"
+
+#if defined(PLATFORM_DREAMCAST)
+// ---- Dreamcast controller layout (maximqad) --------------------------------
+// analog stick = LOOK, face buttons = MOVE, triggers = jump/attack,
+// D-pad = weapon cycling. Appended last so it overrides the generic binds above.
+// The DC has one analog stick (SDL "left stick"); joy_swapmovelook routes it to
+// look, leaving movement to the face buttons.
+"joy_swapmovelook 1\n"
+
+// face buttons -> movement (diamond: Y=fwd, A=back, X=left, B=right)
+"bind YBUTTON +forward\n"
+"bind ABUTTON +back\n"
+"bind XBUTTON +moveleft\n"
+"bind BBUTTON +moveright\n"
+
+// triggers -> jump / attack
+"bind LTRIGGER +jump\n"
+"bind RTRIGGER +attack\n"
+
+// shoulders + D-pad -> weapon cycling (D-pad reports as the arrow keys, so these
+// override the arrow-key movement binds above -- fine on DC, no keyboard).
+"bind LSHOULDER \"impulse 12\"\n"
+"bind RSHOULDER \"impulse 10\"\n"
+"bind UPARROW \"impulse 10\"\n"		// next weapon
+"bind RIGHTARROW \"impulse 10\"\n"	// next weapon
+"bind DOWNARROW \"impulse 12\"\n"	// previous weapon
+"bind LEFTARROW \"impulse 12\"\n"	// previous weapon
+
+// START = menu, BACK = scoreboard are handled by in_sdl.c (ESCAPE / TAB).
+#endif
+;
