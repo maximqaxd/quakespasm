@@ -120,16 +120,34 @@ void   *PVR_VramAlloc (unsigned bytes);		// returns pvr_ptr_t (NULL on OOM)
 void	PVR_VramFree (void *ptr);
 
 // Texture upload (pvr_image.c). The gltexture_t receives a VRAM pointer (pvr_vram)
-// + a compiled PVR_TXRFMT_* (pvr_fmt). Two entry points by source pixel type:
+// + a compiled PVR_TXRFMT_* (pvr_fmt). Entry points by source pixel type:
+//   - PVR_UploadTextureIndexed: 8bpp indices into a shared palette bank -- HALF the
+//                           VRAM of 16bpp. Twiddled (paletted is always twiddled).
+//                           This is the primary path for Quake's indexed textures.
 //   - PVR_UploadTexture:    32-bit RGBA source, converted to RGB565 (opaque) or
-//                           ARGB4444 (when flags has TEXPREF_ALPHA).
+//                           ARGB4444 (alpha). For SRC_RGBA (external/replacement).
 //   - PVR_UploadTexture565: source already 16-bit RGB565 (lightmaps), uploaded as-is.
-// Both expect power-of-two w,h (TexMgr pads before calling). Re-upload frees any
+// All expect power-of-two w,h (TexMgr pads before calling). Re-upload frees any
 // previous VRAM first.
+void	PVR_UploadTextureIndexed (struct gltexture_s *glt, const void *indices, int w, int h, int palbank);
 void	PVR_UploadTexture (struct gltexture_s *glt, const void *rgba, int w, int h, unsigned flags);
 void	PVR_UploadTexture565 (struct gltexture_s *glt, const void *rgb565, int w, int h);
 void	PVR_FreeTexture (struct gltexture_s *glt);
 void	PVR_BindTexture (struct gltexture_s *glt);	// records the bound texture for the context cache
+
+// Palette RAM (pvr_image.c). The PVR has 1024 32-bit palette entries = four 256-
+// entry banks for 8bpp textures. Quake's fixed palette + its fullbright/nobright/
+// conchars variants map onto these banks; every indexed texture then shares them.
+// Call PVR_PaletteInit once, then load each variant table (RGBA8888, as built by
+// TexMgr_LoadPalette) into its bank.
+enum {
+	PVR_PALBANK_STD      = 0,	// d_8to24table          (world/model/fence)
+	PVR_PALBANK_FBRIGHT  = 1,	// d_8to24table_fbright  (fullbright overlay)
+	PVR_PALBANK_CONCHARS = 2,	// d_8to24table_conchars (console font)
+	PVR_PALBANK_NOBRIGHT = 3	// d_8to24table_nobright (no-fullbright world)
+};
+void	PVR_PaletteInit (void);
+void	PVR_PaletteSetBank (int bank, const unsigned int *rgba256);
 
 // The texture the render path should sample next (set by GL_Bind -> PVR_BindTexture).
 // pvr_context reads this when compiling the poly header. NULL = untextured.

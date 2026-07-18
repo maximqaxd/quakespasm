@@ -398,10 +398,28 @@ static void TexMgr_LoadMiptexPalette (byte *in, byte *out, int numcolors, unsign
 		out[-1] = 0;
 }
 
+/*
+================
+TexMgr_LoadPvrPalettes -- push Quake's palette variants into the PVR palette banks
+
+Called after TexMgr_LoadPalette rebuilds the d_8to24table* tables. Every 8bpp
+indexed texture then samples one of these four banks.
+================
+*/
+static void TexMgr_LoadPvrPalettes (void)
+{
+	PVR_PaletteInit ();
+	PVR_PaletteSetBank (PVR_PALBANK_STD,      d_8to24table);
+	PVR_PaletteSetBank (PVR_PALBANK_FBRIGHT,  d_8to24table_fbright);
+	PVR_PaletteSetBank (PVR_PALBANK_CONCHARS, d_8to24table_conchars);
+	PVR_PaletteSetBank (PVR_PALBANK_NOBRIGHT, d_8to24table_nobright);
+}
+
 void TexMgr_NewGame (void)
 {
 	TexMgr_FreeTextures (0, TEXPREF_PERSIST);
 	TexMgr_LoadPalette ();
+	TexMgr_LoadPvrPalettes ();
 }
 
 /*
@@ -456,6 +474,7 @@ void TexMgr_Init (void)
 	numgltextures = 0;
 
 	TexMgr_LoadPalette ();
+	TexMgr_LoadPvrPalettes ();
 
 	Cvar_RegisterVariable (&gl_max_size);
 	Cvar_RegisterVariable (&gl_picmip);
@@ -807,12 +826,73 @@ static void TexMgr_LoadImage32 (gltexture_t *glt, unsigned *data)
 
 /*
 ================
+TexMgr_ShrinkW8 / TexMgr_ShrinkH8 -- nearest 2:1 decimation of 8bpp index data
+
+The 32-bit pipeline downsamples with bilinear averaging; index data can't be
+averaged (the result wouldn't be a valid palette index), so the paletted path
+decimates by point sampling -- which matches classic Quake's point-sampled look
+anyway. In place; each output row stays behind the input it reads.
+================
+*/
+static void TexMgr_ShrinkW8 (byte *data, int w, int h)
+{
+	int x, y, hw = w >> 1;
+	byte *out = data;
+	for (y = 0; y < h; y++)
+	{
+		const byte *in = data + y * w;
+		for (x = 0; x < hw; x++)
+			*out++ = in[x << 1];
+	}
+}
+
+static void TexMgr_ShrinkH8 (byte *data, int w, int h)
+{
+	int y, hh = h >> 1;
+	byte *out = data;
+	for (y = 0; y < hh; y++, out += w)
+		memcpy (out, data + (y << 1) * w, w);
+}
+
+/*
+================
+TexMgr_LoadImageIndexed -- upload 8bpp indices straight to VRAM (half the RAM)
+
+For power-of-two indexed textures that use one of the shared palette banks. Picmip
+is applied by nearest decimation in index space; no 32-bit expansion, no resample.
+================
+*/
+static void TexMgr_LoadImageIndexed (gltexture_t *glt, byte *data, int palbank)
+{
+	int picmip, mipwidth, mipheight;
+
+	picmip = (glt->flags & TEXPREF_NOPICMIP) ? 0 : q_max((int)gl_picmip.value, 0);
+	mipwidth  = TexMgr_SafeTextureSize (glt->width >> picmip);
+	mipheight = TexMgr_SafeTextureSize (glt->height >> picmip);
+
+	while ((int) glt->width > mipwidth)
+	{
+		TexMgr_ShrinkW8 (data, glt->width, glt->height);
+		glt->width >>= 1;
+	}
+	while ((int) glt->height > mipheight)
+	{
+		TexMgr_ShrinkH8 (data, glt->width, glt->height);
+		glt->height >>= 1;
+	}
+
+	PVR_UploadTextureIndexed (glt, data, glt->width, glt->height, palbank);
+}
+
+/*
+================
 TexMgr_LoadImage8 -- expand indexed source to RGBA, then LoadImage32
 ================
 */
 static void TexMgr_LoadImage8 (gltexture_t *glt, byte *data, unsigned int *usepal)
 {
 	extern cvar_t gl_fullbrights;
+	qboolean global_pal = (usepal == NULL);	// NULL => Quake's shared palette (bankable)
 	qboolean padw = false, padh = false;
 	byte padbyte = 0;
 	int i;
@@ -831,6 +911,28 @@ static void TexMgr_LoadImage8 (gltexture_t *glt, byte *data, unsigned int *usepa
 				break;
 		if (i == (int) (glt->width * glt->height))
 			glt->flags -= TEXPREF_ALPHA;
+	}
+
+	// Shared-palette + already power-of-two => upload as 8bpp paletted (half the
+	// VRAM of 16bpp). Transparency comes from the palette (index 255 -> alpha 0);
+	// the render side still routes TEXPREF_ALPHA surfaces to the punch-through list.
+	// Non-POT / padded pics fall through to the 32-bit path below (they're small).
+	if (global_pal &&
+	    (int) glt->width  == TexMgr_Pad ((int) glt->width) &&
+	    (int) glt->height == TexMgr_Pad ((int) glt->height))
+	{
+		int bank;
+		if (glt->flags & TEXPREF_FULLBRIGHT)
+			bank = PVR_PALBANK_FBRIGHT;
+		else if ((glt->flags & TEXPREF_NOBRIGHT) && gl_fullbrights.value)
+			bank = PVR_PALBANK_NOBRIGHT;
+		else if (glt->flags & TEXPREF_CONCHARS)
+			bank = PVR_PALBANK_CONCHARS;
+		else
+			bank = PVR_PALBANK_STD;
+
+		TexMgr_LoadImageIndexed (glt, data, bank);
+		return;
 	}
 
 	// choose palette and padbyte
