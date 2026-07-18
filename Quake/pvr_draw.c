@@ -557,6 +557,20 @@ void Draw_Init (void)
 
 #define ARGB_WHITE	0xffffffffu
 
+// Current 2D tint/alpha for textured draws (Draw_Pic / Draw_Character). glColor4f
+// is a no-op stub on the PVR path, so scr_sbaralpha etc. drive this instead.
+static uint32_t s_draw_argb = ARGB_WHITE;
+
+void Draw_SetColorAlpha (float r, float g, float b, float a)
+{
+	int ir, ig, ib, ia;
+	ir = (int)(r * 255.0f); if (ir > 255) ir = 255; else if (ir < 0) ir = 0;
+	ig = (int)(g * 255.0f); if (ig > 255) ig = 255; else if (ig < 0) ig = 0;
+	ib = (int)(b * 255.0f); if (ib > 255) ib = 255; else if (ib < 0) ib = 0;
+	ia = (int)(a * 255.0f); if (ia > 255) ia = 255; else if (ia < 0) ia = 0;
+	s_draw_argb = ((uint32_t)ia << 24) | ((uint32_t)ir << 16) | ((uint32_t)ig << 8) | (uint32_t)ib;
+}
+
 /*
 ================
 Draw_CharacterQuad -- emit one 8x8 conchars glyph
@@ -569,7 +583,7 @@ static void Draw_CharacterQuad (int x, int y, char num)
 
 	PVR_EmitQuad (char_texture, GL_MODULATE, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA,
 		      x, y, x + 8, y + 8,
-		      fcol, frow, fcol + size, frow + size, ARGB_WHITE);
+		      fcol, frow, fcol + size, frow + size, s_draw_argb);
 }
 
 /*
@@ -623,7 +637,7 @@ void Draw_Pic (int x, int y, qpic_t *pic)
 
 	PVR_EmitQuad (gl->gltexture, GL_MODULATE, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA,
 		      x, y, x + pic->width, y + pic->height,
-		      gl->sl, gl->tl, gl->sh, gl->th, ARGB_WHITE);
+		      gl->sl, gl->tl, gl->sh, gl->th, s_draw_argb);
 }
 
 /*

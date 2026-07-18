@@ -498,6 +498,19 @@ void Draw_String (int x, int y, const char *str)
 }
 
 /*
+================
+Draw_SetColorAlpha -- tint/alpha applied to subsequent Draw_Pic/Character
+================
+*/
+void Draw_SetColorAlpha (float r, float g, float b, float a)
+{
+	if (a >= 1.0f)
+		glColor3f (r, g, b);
+	else
+		glColor4f (r, g, b, a);
+}
+
+/*
 =============
 Draw_Pic -- johnfitz -- modified
 =============

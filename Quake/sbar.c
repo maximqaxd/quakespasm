@@ -251,10 +251,14 @@ void Sbar_LoadPics (void)
 Sbar_Init -- johnfitz -- rewritten
 ===============
 */
+// N64-style translucent corner HUD (0 = classic bottom bar).
+cvar_t	scr_hudstyle = {"scr_hudstyle", "1", CVAR_ARCHIVE};
+
 void Sbar_Init (void)
 {
 	Cmd_AddCommand ("+showscores", Sbar_ShowScores);
 	Cmd_AddCommand ("-showscores", Sbar_DontShowScores);
+	Cvar_RegisterVariable (&scr_hudstyle);
 
 	Sbar_LoadPics ();
 }
@@ -889,6 +893,103 @@ void Sbar_DrawFace (void)
 
 /*
 ===============
+Sbar_HudNum -- big status number drawn directly (no SBAR-canvas y offset), for
+the overlay HUD. color 0 = white, 1 = red (low value).
+===============
+*/
+static void Sbar_HudNum (int x, int y, int num, int digits, int color)
+{
+	char	str[12], *ptr;
+	int	l, frame;
+
+	num = q_min (999, num);
+	l = Sbar_itoa (num, str);
+	ptr = str;
+	if (l > digits)
+		ptr += (l - digits);
+	if (l < digits)
+		x += (digits - l) * 24;
+	while (*ptr)
+	{
+		frame = (*ptr == '-') ? STAT_MINUS : (*ptr - '0');
+		Draw_Pic (x, y, sb_nums[color][frame]);
+		x += 24;
+		ptr++;
+	}
+}
+
+/*
+===============
+Sbar_DrawOverlay -- N64-style translucent corner HUD
+
+Health + face bottom-left with armor above it; ammo + icon bottom-right. No solid
+bar, blended by scr_sbaralpha so the 3D shows through. Uses the bottom-corner
+canvases and draws directly so it works on both the GL and PVR back ends.
+===============
+*/
+void Sbar_DrawOverlay (void)
+{
+	extern cvar_t	scr_sbaralpha;
+	float	a = CLAMP (0.0f, scr_sbaralpha.value, 1.0f);
+	int	f, anim, yh, ya;
+
+	if (a <= 0.0f)
+		a = 0.6f;			// translucent by default even if the bar alpha is 0
+	Draw_SetColorAlpha (1.0f, 1.0f, 1.0f, a);
+
+	// ---- left: face + health, armor above ----
+	GL_SetCanvas (CANVAS_BOTTOMLEFT);
+	yh = 200 - 24 - 6;			// bottom row (24-tall pics, 6px margin)
+	ya = yh - 28;				// armor row above
+
+	if (cl.stats[STAT_ARMOR] > 0)
+	{
+		qpic_t *ap = NULL;
+		if (cl.items & IT_ARMOR3) ap = sb_armor[2];
+		else if (cl.items & IT_ARMOR2) ap = sb_armor[1];
+		else if (cl.items & IT_ARMOR1) ap = sb_armor[0];
+		if (ap)
+			Draw_Pic (8, ya, ap);
+		Sbar_HudNum (40, ya, cl.stats[STAT_ARMOR], 3, cl.stats[STAT_ARMOR] <= 25);
+	}
+
+	if ((cl.items & (IT_INVISIBILITY | IT_INVULNERABILITY)) == (IT_INVISIBILITY | IT_INVULNERABILITY))
+		Draw_Pic (8, yh, sb_face_invis_invuln);
+	else if (cl.items & IT_QUAD)
+		Draw_Pic (8, yh, sb_face_quad);
+	else if (cl.items & IT_INVISIBILITY)
+		Draw_Pic (8, yh, sb_face_invis);
+	else if (cl.items & IT_INVULNERABILITY)
+		Draw_Pic (8, yh, sb_face_invuln);
+	else
+	{
+		f = (cl.stats[STAT_HEALTH] >= 100) ? 4 : cl.stats[STAT_HEALTH] / 20;
+		if (f < 0) f = 0;
+		anim = (cl.time <= cl.faceanimtime) ? 1 : 0;
+		Draw_Pic (8, yh, sb_faces[f][anim]);
+	}
+	Sbar_HudNum (40, yh, cl.stats[STAT_HEALTH], 3, cl.stats[STAT_HEALTH] <= 25);
+
+	// ---- right: ammo icon + number ----
+	GL_SetCanvas (CANVAS_BOTTOMRIGHT);
+	{
+		qpic_t *ip = NULL;
+		int nx = 320 - 8 - 3 * 24;	// 3 digits right-aligned to x=312
+		if (cl.items & IT_SHELLS)       ip = sb_ammo[0];
+		else if (cl.items & IT_NAILS)   ip = sb_ammo[1];
+		else if (cl.items & IT_ROCKETS) ip = sb_ammo[2];
+		else if (cl.items & IT_CELLS)   ip = sb_ammo[3];
+		if (ip)
+			Draw_Pic (nx - 28, yh, ip);
+		Sbar_HudNum (nx, yh, cl.stats[STAT_AMMO], 3, cl.stats[STAT_AMMO] <= 10);
+	}
+
+	Draw_SetColorAlpha (1.0f, 1.0f, 1.0f, 1.0f);
+	sb_updates = 0;				// translucent overlay -> redraw every frame
+}
+
+/*
+===============
 Sbar_Draw
 ===============
 */
@@ -901,6 +1002,15 @@ void Sbar_Draw (void)
 
 	if (cl.intermission)
 		return; //johnfitz -- never draw sbar during intermission
+
+	// N64-style translucent corner HUD -- overlays the full 3D view, drawn every
+	// frame (blended, so no sb_updates skip). Scoreboard/death fall through to the
+	// classic path below.
+	if (scr_hudstyle.value && !sb_showscores && cl.stats[STAT_HEALTH] > 0)
+	{
+		Sbar_DrawOverlay ();
+		return;
+	}
 
 	if (sb_updates >= vid.numpages && !gl_clear.value && scr_sbaralpha.value >= 1 //johnfitz -- gl_clear, scr_sbaralpha
         && !(gl_glsl_gamma_able && vid_gamma.value != 1))                         //ericw -- must draw sbar every frame if doing glsl gamma
