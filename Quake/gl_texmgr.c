@@ -1163,115 +1163,6 @@ static void TexMgr_LoadImage32 (gltexture_t *glt, unsigned *data)
 	TexMgr_SetFilterModes (glt);
 }
 
-#if defined(PLATFORM_DREAMCAST) && defined(DC_USE_PALETTED)
-/*
-================
-Dreamcast 8bpp paletted textures.
-================
-*/
-#define DC_MAX_PALETTE_BANKS	4
-static unsigned int	*dc_palette_bank[DC_MAX_PALETTE_BANKS];
-static int		dc_palette_banks_used = 0;
-static qboolean		dc_shared_palette_enabled = false;
-
-static int TexMgr_DC_GetPaletteBank (unsigned int *pal)
-{
-	int i;
-
-	for (i = 0; i < dc_palette_banks_used; i++)
-		if (dc_palette_bank[i] == pal)
-			return i;
-
-	if (dc_palette_banks_used >= DC_MAX_PALETTE_BANKS)
-		return -1;	/* out of banks -> caller falls back to RGBA */
-
-	i = dc_palette_banks_used++;
-	dc_palette_bank[i] = pal;
-
-	if (!dc_shared_palette_enabled)
-	{
-		glEnable (GL_SHARED_TEXTURE_PALETTE_EXT);
-		dc_shared_palette_enabled = true;
-	}
-
-	glColorTableEXT (GL_SHARED_TEXTURE_PALETTE_0_KOS + i, GL_RGBA8, 256,
-			 GL_RGBA, GL_UNSIGNED_BYTE, (const GLvoid *) pal);
-
-	return i;
-}
-
-/* Nearest-neighbour resample of 8-bit indices to POT dims (indices can't be
-   averaged the way TexMgr_ResampleTexture blends RGBA). Matches the texcoord
-   expectation that an NPOT source stretches to fill the padded texture. */
-static byte *TexMgr_DC_ResampleIndices (byte *in, int inw, int inh, int outw, int outh)
-{
-	byte	*out = (byte *) Hunk_Alloc (outw * outh);
-	int	x, y;
-
-	for (y = 0; y < outh; y++)
-	{
-		const byte	*srow = in + (y * inh / outh) * inw;
-		byte		*drow = out + y * outw;
-		for (x = 0; x < outw; x++)
-			drow[x] = srow[x * inw / outw];
-	}
-
-	return out;
-}
-
-/* Returns true if the texture was uploaded as 8bpp paletted. Handles any opaque
-   texture whose palette fits in a bank, including TEXPREF_PAD (padded) textures
-   like model skins -- the big VRAM consumers. */
-static qboolean TexMgr_DC_LoadPaletted (gltexture_t *glt, byte *data, unsigned int *usepal, byte padbyte)
-{
-	int	pw, ph, bank;
-
-	/* Alpha textures stay RGBA: they need TexMgr_AlphaEdgeFix (an RGBA blend)
-	   and a transparent palette entry. */
-	if (glt->flags & TEXPREF_ALPHA)
-		return false;
-
-	pw = TexMgr_Pad (glt->width);
-	ph = TexMgr_Pad (glt->height);
-
-	if (pw != ph)
-		return false;
-
-	bank = TexMgr_DC_GetPaletteBank (usepal);
-	if (bank < 0)
-		return false;
-
-	if (glt->flags & TEXPREF_PAD)
-	{
-		/* Border-pad in index space, exactly like the RGBA path, so the
-		   engine's PadConditional texcoords line up. */
-		if ((int) glt->width < pw)
-		{
-			data = TexMgr_PadImageW (data, glt->width, glt->height, padbyte);
-			glt->width = pw;
-		}
-		if ((int) glt->height < ph)
-		{
-			data = TexMgr_PadImageH (data, glt->width, glt->height, padbyte);
-			glt->height = ph;
-		}
-	}
-	else if (pw != (int) glt->width || ph != (int) glt->height)
-	{
-		/* NPOT source stretches to fill the POT texture (nearest). */
-		data = TexMgr_DC_ResampleIndices (data, glt->width, glt->height, pw, ph);
-		glt->width = pw;
-		glt->height = ph;
-	}
-
-	GL_Bind (glt);
-	glTexImage2D (GL_TEXTURE_2D, 0, GL_COLOR_INDEX8_TWID_KOS, glt->width, glt->height, 0,
-		      GL_COLOR_INDEX, GL_UNSIGNED_BYTE, data);
-	glTexParameteri (GL_TEXTURE_2D, GL_SHARED_TEXTURE_BANK_KOS, bank);
-	TexMgr_SetFilterModes (glt);
-	return true;
-}
-#endif	/* PLATFORM_DREAMCAST */
 
 /*
 ================
@@ -1336,11 +1227,6 @@ static void TexMgr_LoadImage8 (gltexture_t *glt, byte *data, unsigned int *usepa
 			padbyte = 255;
 		}
 	}
-
-#if defined(PLATFORM_DREAMCAST) && defined(DC_USE_PALETTED)
-	if (TexMgr_DC_LoadPaletted (glt, data, usepal, padbyte))
-		return;
-#endif
 
 	// pad each dimention, but only if it's not going to be downsampled later
 	if (glt->flags & TEXPREF_PAD)
