@@ -23,6 +23,7 @@ alpha surfaces and brush-model entities are still TODO.
 ================================================================================
 */
 #include "pvr_local.h"
+#include <math.h>
 
 #if defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER)
 
@@ -31,6 +32,12 @@ alpha surfaces and brush-model entities are still TODO.
 
 extern int	d_lightstylevalue[256];	// 8.8 lightstyle intensities (gl_rmain.c)
 extern cvar_t	gl_fullbrights;		// r_world.c toggle for the glow pass
+
+// Apply per-vertex dynamic lights this pass. Only the world model has its
+// surfaces marked by R_PushDlights (R_MarkLights walks cl.worldmodel->nodes) and
+// keeps its verts in world space, so dlights are gated to the world -- brush-model
+// entities draw model-local verts and would need the light in model space.
+static qboolean	pvr_vertex_dlights;
 
 /*
 ==============
@@ -44,12 +51,52 @@ accumulate styles * d_lightstylevalue, >>7). Lightstyle animation (flicker/pulse
 falls out for free via d_lightstylevalue. Dynamic lights are TODO.
 ==============
 */
+// Accumulate every active dynamic light's contribution at a world-space vertex.
+// Mirrors R_AddDynamicLights, but sampled once at the vertex (Euclidean in-plane
+// distance) instead of per-luxel, and folded straight into the r/g/b light sums
+// in the same 8.8 blocklights scale (color * 256, later >>7). Colored dlights
+// (lordhavoc lit support) tint the vertex.
+static void PVR_AddDynamicLightsVertex (msurface_t *surf, const float *v,
+					unsigned *pr, unsigned *pg, unsigned *pb)
+{
+	mplane_t	*plane = surf->plane;
+	int		lnum, i;
+	float		rad, perp, minl, dist, bright;
+	vec3_t		impact, delta;
+
+	for (lnum = 0; lnum < MAX_DLIGHTS; lnum++)
+	{
+		if (!(surf->dlightbits[lnum >> 5] & (1U << (lnum & 31))))
+			continue;			// surface not lit by this light
+
+		rad  = cl_dlights[lnum].radius;
+		perp = DotProduct (cl_dlights[lnum].origin, plane->normal) - plane->dist;
+		rad -= fabsf (perp);			// subtract perpendicular distance to plane
+		minl = cl_dlights[lnum].minlight;
+		if (rad < minl)
+			continue;
+
+		for (i = 0; i < 3; i++)			// closest point on the plane to the light
+			impact[i] = cl_dlights[lnum].origin[i] - plane->normal[i] * perp;
+
+		VectorSubtract (v, impact, delta);	// v lies on the plane: in-plane offset
+		dist = sqrtf (DotProduct (delta, delta));
+		if (dist >= rad - minl)
+			continue;			// below the light's minimum contribution
+
+		bright = rad - dist;
+		*pr += (unsigned)(bright * cl_dlights[lnum].color[0] * 256.0f);
+		*pg += (unsigned)(bright * cl_dlights[lnum].color[1] * 256.0f);
+		*pb += (unsigned)(bright * cl_dlights[lnum].color[2] * 256.0f);
+	}
+}
+
 static uint32_t PVR_LightVertex (msurface_t *surf, const float *v)
 {
 	mtexinfo_t	*tex;
-	int		smax, tmax, size, ls, lt, maps, val;
+	int		smax, tmax, size, ls, lt, maps, r, g, b;
 	float		s, t;
-	unsigned	acc = 0;
+	unsigned	racc, gacc, bacc;
 
 	if (!surf || !surf->samples || !cl.worldmodel->lightdata)
 		return 0xffffffffu;		// unlit -> fullbright
@@ -64,13 +111,24 @@ static uint32_t PVR_LightVertex (msurface_t *surf, const float *v)
 	ls = (int)(s * (1.0f / 16.0f)); if (ls < 0) ls = 0; if (ls >= smax) ls = smax - 1;
 	lt = (int)(t * (1.0f / 16.0f)); if (lt < 0) lt = 0; if (lt >= tmax) lt = tmax - 1;
 
+	// Static lightmap: DC lightdata is grayscale (1 byte/luxel), replicated to rgb.
+	racc = gacc = bacc = 0;
 	for (maps = 0; maps < MAXLIGHTMAPS && surf->styles[maps] != 255; maps++)
-		acc += (unsigned)surf->samples[maps * size + lt * smax + ls] * (unsigned)d_lightstylevalue[surf->styles[maps]];
+	{
+		unsigned lum = (unsigned)surf->samples[maps * size + lt * smax + ls]
+			     * (unsigned)d_lightstylevalue[surf->styles[maps]];
+		racc += lum; gacc += lum; bacc += lum;
+	}
 
-	val = (int)(acc >> 7);			// single-pass MODULATE: map to [0,255]
-	if (val > 255) val = 255;
+	// Dynamic lights (rockets, explosions, muzzle flashes) -- world surfaces only.
+	if (pvr_vertex_dlights && surf->dlightframe == r_framecount)
+		PVR_AddDynamicLightsVertex (surf, v, &racc, &gacc, &bacc);
 
-	return 0xff000000u | ((unsigned)val << 16) | ((unsigned)val << 8) | (unsigned)val;
+	r = (int)(racc >> 7); if (r > 255) r = 255;	// 8.8 -> [0,255], single MODULATE pass
+	g = (int)(gacc >> 7); if (g > 255) g = 255;
+	b = (int)(bacc >> 7); if (b > 255) b = 255;
+
+	return 0xff000000u | ((unsigned)r << 16) | ((unsigned)g << 8) | (unsigned)b;
 }
 
 //------------------------------------------------------------------------------
@@ -210,6 +268,7 @@ static void PVR_DrawChains (qmodel_t *model, texchain_t chain)
 
 void PVR_DrawWorld (qmodel_t *model)
 {
+	pvr_vertex_dlights = true;		// world verts are world-space + dlight-marked
 	PVR_DrawChains (model, chain_world);
 }
 
@@ -228,6 +287,7 @@ void PVR_DrawWorld_Fence (qmodel_t *model)
 	texture_t	*t, *ta;
 	msurface_t	*s;
 
+	pvr_vertex_dlights = true;		// fence surfaces belong to the world model
 	PVR_ListBegin (PVR_LIST_PT_POLY);
 	PVR_SetBlend (GL_ONE, GL_ZERO);		// no blend; the PT list does the alpha test
 	PVR_SetTexEnv (GL_MODULATE);		// lit
@@ -261,6 +321,7 @@ void PVR_DrawWorld_Fence (qmodel_t *model)
 // entity's world*object MVP (PVR_SetupEntityMatrices).
 void PVR_DrawBrushModel (qmodel_t *model)
 {
+	pvr_vertex_dlights = false;		// model-local verts: skip world-space dlights
 	PVR_DrawChains (model, chain_model);
 }
 
