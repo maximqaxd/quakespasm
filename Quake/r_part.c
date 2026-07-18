@@ -27,10 +27,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define ABSOLUTE_MIN_PARTICLES	512		// no fewer than this no matter what's
 										//  on the command line
 #if defined(PLATFORM_DREAMCAST)
-/* Dreamcast: was 16384. Frees ~630KB hunk (44B/particle) and caps GLdc's
-   per-frame particle vertex buffer, which was overrunning the reserve during
-   pickup/explosion bursts ("Out of memory" sbrk spam). */
-#define DEFAULT_NUM_PARTICLES	2048
+#define DEFAULT_NUM_PARTICLES	512
 #else
 #define DEFAULT_NUM_PARTICLES	16384
 #endif

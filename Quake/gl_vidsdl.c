@@ -1453,6 +1453,9 @@ void GL_BeginRendering (int *x, int *y, int *width, int *height)
 	*x = *y = 0;
 	*width = vid.width;
 	*height = vid.height;
+#if defined(PLATFORM_DREAMCAST)
+	glEnable (GL_NEARZ_CLIPPING_KOS);
+#endif
 }
 
 /*
