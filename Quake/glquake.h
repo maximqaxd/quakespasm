@@ -445,6 +445,17 @@ void PVR_DrawBrushModel_Fullbright (qmodel_t *model);
 qboolean R_PVRBrushModel_Setup (entity_t *e);
 void PVR_DrawBrushEnts_Solid (void);
 void PVR_DrawBrushEnts_Fullbright (void);
+
+// alias (.mdl) models -- passkind for PVR_DrawAliasModel / PVR_SubmitAliasFrame
+#define PVR_ALIAS_OPAQUE	0	// OP list, opaque
+#define PVR_ALIAS_HOLEY		1	// PT list, alpha-tested cutout (MF_HOLEY)
+#define PVR_ALIAS_TRANS		2	// TR list, entity-alpha blend
+void PVR_SetupAliasMatrices (vec3_t origin, vec3_t angles, unsigned char scale, vec3_t hdr_scale, vec3_t hdr_scale_origin, float fovscale);
+void PVR_SubmitAliasFrame (const float *pos, const float *st, const uint32_t *argb, const unsigned short *idx, int numverts, int numtris, struct gltexture_s *tx, int passkind);
+void PVR_DrawAliasModel (entity_t *e, int passkind);
+void PVR_DrawAliasEnts_Opaque (void);
+void PVR_DrawAliasEnts_Holey (void);
+void PVR_DrawAliasEnts_Translucent (void);
 // brush-model entities: object transform + their solid/liquid surface chains
 void PVR_SetupEntityMatrices (vec3_t origin, vec3_t angles, unsigned char scale);
 void PVR_RestoreWorldMatrix (void);

@@ -110,6 +110,27 @@ void PVR_SetupEntityMatrices (vec3_t origin, vec3_t angles, unsigned char scale)
 		shz_xmtrx_scale (sf, sf, sf);
 }
 
+/*
+==============
+PVR_SetupAliasMatrices -- entity MVP with the alias byte-vertex decode baked in
+
+Alias .mdl positions are stored as bytes (0..255) that map to model space via
+scale*v + scale_origin (per-model constants). Mirrors R_DrawAliasModel's GL
+matrix sequence: R_RotateForEntity, then glTranslate(scale_origin) and
+glScale(scale). Post-multiplying those onto the entity transform means the raw
+(possibly lerped) byte positions can be fed straight through the XMTRX ftrv --
+one matrix decodes + transforms every vertex. fovscale (>1 only for a wide-fov
+view weapon) scales Y/Z like the GL path. Restore with PVR_RestoreWorldMatrix.
+==============
+*/
+void PVR_SetupAliasMatrices (vec3_t origin, vec3_t angles, unsigned char scale,
+			     vec3_t hdr_scale, vec3_t hdr_scale_origin, float fovscale)
+{
+	PVR_SetupEntityMatrices (origin, angles, scale);
+	shz_xmtrx_translate (hdr_scale_origin[0], hdr_scale_origin[1] * fovscale, hdr_scale_origin[2] * fovscale);
+	shz_xmtrx_scale (hdr_scale[0], hdr_scale[1] * fovscale, hdr_scale[2] * fovscale);
+}
+
 void PVR_RestoreWorldMatrix (void)
 {
 	shz_xmtrx_load_4x4 (&pvr_world_mvp);

@@ -747,6 +747,79 @@ void PVR_DrawBrushEnts_Fullbright (void)
 		}
 	}
 }
+
+/*
+================
+PVR_DrawAliasEnts_* -- phased alias (.mdl) entity submission
+
+Alias models (monsters, items, gibs, the view weapon) are grouped by list phase
+like the brush entities: opaque solids in OP, alpha-tested cutouts (MF_HOLEY) in
+PT, entity-alpha blends in TR. Classification is mutually exclusive so each entity
+is drawn exactly once. PVR_DrawAliasModel (r_alias.c) does the per-entity setup.
+================
+*/
+void PVR_DrawAliasEnts_Opaque (void)
+{
+	int	i;
+
+	if (!r_drawentities.value)
+		return;
+	for (i = 0; i < cl_numvisedicts; i++)
+	{
+		entity_t *e = cl_visedicts[i];
+		if (!e->model || e->model->type != mod_alias)
+			continue;
+		if (ENTALPHA_DECODE (e->alpha) < 1)
+			continue;			// translucent -> TR phase
+		if (e->model->flags & MF_HOLEY)
+			continue;			// alpha-tested -> PT phase
+		PVR_DrawAliasModel (e, PVR_ALIAS_OPAQUE);
+	}
+
+	// the view weapon (not in cl_visedicts); mirror R_DrawViewModel's gating
+	if (r_drawviewmodel.value && r_drawentities.value && !chase_active.value
+	    && !(cl.items & IT_INVISIBILITY) && cl.stats[STAT_HEALTH] > 0
+	    && cl.viewent.model && cl.viewent.model->type == mod_alias)
+	{
+		PVR_DrawAliasModel (&cl.viewent, PVR_ALIAS_OPAQUE);
+	}
+}
+
+void PVR_DrawAliasEnts_Holey (void)
+{
+	int	i;
+
+	if (!r_drawentities.value)
+		return;
+	for (i = 0; i < cl_numvisedicts; i++)
+	{
+		entity_t *e = cl_visedicts[i];
+		if (!e->model || e->model->type != mod_alias)
+			continue;
+		if (ENTALPHA_DECODE (e->alpha) < 1)
+			continue;
+		if (!(e->model->flags & MF_HOLEY))
+			continue;
+		PVR_DrawAliasModel (e, PVR_ALIAS_HOLEY);
+	}
+}
+
+void PVR_DrawAliasEnts_Translucent (void)
+{
+	int	i;
+
+	if (!r_drawentities.value)
+		return;
+	for (i = 0; i < cl_numvisedicts; i++)
+	{
+		entity_t *e = cl_visedicts[i];
+		if (!e->model || e->model->type != mod_alias)
+			continue;
+		if (ENTALPHA_DECODE (e->alpha) >= 1)
+			continue;			// opaque handled in the OP/PT phases
+		PVR_DrawAliasModel (e, PVR_ALIAS_TRANS);
+	}
+}
 #endif	/* PLATFORM_DREAMCAST && USE_PVR_RENDER */
 
 /*
@@ -1018,14 +1091,17 @@ void R_RenderScene (void)
 	// --- OP: opaque solid geometry ---
 	R_DrawWorld ();                           // world solid surfaces
 	PVR_DrawBrushEnts_Solid ();               // brush ents: solid + opaque liquid
+	PVR_DrawAliasEnts_Opaque ();              // alias models: monsters/items/weapon
 	PVR_DrawWorld_WaterOpaque (cl.worldmodel);// world opaque liquid
 
 	// --- TR: translucent + additive overlays ---
 	PVR_DrawWorld_WaterTrans (cl.worldmodel); // world translucent liquid
 	PVR_DrawWorld_Fullbright (cl.worldmodel); // world glow/luma maps
 	PVR_DrawBrushEnts_Fullbright ();          // brush ents: glow
+	PVR_DrawAliasEnts_Translucent ();         // alias models: entity-alpha blends
 
 	// --- PT: alpha-tested cutouts (with the 2D HUD, which renders last) ---
+	PVR_DrawAliasEnts_Holey ();               // alias models: MF_HOLEY cutouts
 	PVR_DrawWorld_Fence (cl.worldmodel);      // fence/grate surfaces
 	return;
 #endif

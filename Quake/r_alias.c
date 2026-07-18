@@ -29,6 +29,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // Reused per-frame scratch for the DC indexed fast path (see GL_DrawAliasFrame).
 static float	dc_posbuf[MAXALIASVERTS*3];
 static float	dc_colbuf[MAXALIASVERTS*4];
+#if defined(USE_PVR_RENDER)
+static uint32_t	dc_argbbuf[MAXALIASVERTS];	// packed per-vertex light for the PVR path
+#endif
 #endif
 
 extern cvar_t r_drawflat, gl_overbright_models, gl_fullbrights, r_lerpmodels, r_lerpmove; //johnfitz
@@ -991,6 +994,133 @@ cleanup:
 	glColor3f(1,1,1);
 	glPopMatrix ();
 }
+
+#if defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER)
+/*
+=================
+PVR_DrawAliasModel -- native PVR alias (.mdl) drawer (maximqad)
+
+The renderer-agnostic setup (pose/lerp, entity transform, lighting, skin) is the
+same as R_DrawAliasModel; instead of the GL multipass we bake the entity+decode
+matrix into XMTRX, build flat per-vertex arrays (lerped byte positions + lit
+ARGB), and hand them + the DC index/texcoord tables to pvr_alias.c, which
+transforms the vertex pool once and submits the indexed triangle list.
+
+passkind selects the list: PVR_ALIAS_OPAQUE (OP), _HOLEY (PT alpha-test), _TRANS
+(TR blended). The caller (phased loops in gl_rmain.c) picks it from the model's
+MF_HOLEY flag / entity alpha so lists stay in OP->TR->PT order.
+=================
+*/
+void PVR_DrawAliasModel (entity_t *e, int passkind)
+{
+	aliashdr_t		*paliashdr;
+	lerpdata_t		lerpdata;
+	int			anim, skinnum, j, nverts;
+	gltexture_t		*tx;
+	float			fovscale = 1.0f;
+	trivertx_t		*pv1, *pv2;
+	qboolean		dolerp;
+	float			bl, ibl;
+	const float		*st;
+	const unsigned short	*idx;
+	int			a8;
+
+	currententity = e;	// R_SetupAliasFrame / R_SetupAliasLighting read the global
+
+	paliashdr = (aliashdr_t *)Mod_Extradata (e->model);
+	R_SetupAliasFrame (paliashdr, e->frame, &lerpdata);
+	R_SetupEntityTransform (e, &lerpdata);
+
+	if (R_CullModelForEntity (e))
+		return;
+
+	entalpha = ENTALPHA_DECODE (e->alpha);
+	if (entalpha == 0)
+		return;
+	if (paliashdr->poseverts > MAXALIASVERTS)
+		return;			// too many verts for the DC scratch buffers
+
+	overbright = false;		// gl_overbright_models is 0 on DC (single lit pass)
+	shading = true;
+	R_SetupAliasLighting (e);	// fills lightcolor + shadedots
+
+	// skin (animated), with player colormap override
+	anim = (int)(cl.time * 10) & 3;
+	skinnum = e->skinnum;
+	if (skinnum >= paliashdr->numskins || skinnum < 0)
+		skinnum = 0;
+	tx = paliashdr->gltextures[skinnum][anim];
+	if (e->colormap != vid.colormap && !gl_nocolors.value)
+		if ((uintptr_t)e >= (uintptr_t)&cl_entities[1] && (uintptr_t)e <= (uintptr_t)&cl_entities[cl.maxclients])
+			tx = playertextures[e - cl_entities - 1];
+
+	// wide-fov view weapon shrink (matches R_DrawAliasModel)
+	if (e == &cl.viewent && scr_fov.value > 90.f && cl_gun_fovscale.value)
+		fovscale = tan (scr_fov.value * (0.5f * M_PI / 180.f));
+
+	// build lerped model-space byte positions + per-vertex lit ARGB
+	nverts = paliashdr->poseverts;
+	pv1 = (trivertx_t *)((byte *)paliashdr + paliashdr->posedata) + lerpdata.pose1 * nverts;
+	dolerp = (lerpdata.pose1 != lerpdata.pose2);
+	if (dolerp)
+	{
+		pv2 = (trivertx_t *)((byte *)paliashdr + paliashdr->posedata) + lerpdata.pose2 * nverts;
+		bl = lerpdata.blend;
+		ibl = 1.0f - bl;
+	}
+	else
+	{
+		pv2 = pv1;
+		bl = 0.0f;
+		ibl = 1.0f;
+	}
+
+	a8 = (int)(entalpha * 255.0f);
+	if (a8 > 255) a8 = 255; else if (a8 < 0) a8 = 0;
+
+	for (j = 0; j < nverts; j++)
+	{
+		trivertx_t	*va = pv1 + j;
+		float		px, py, pz, l;
+		int		r, g, b;
+
+		if (dolerp)
+		{
+			trivertx_t	*vb = pv2 + j;
+			shz_vec3_t	A = shz_vec3_init (va->v[0], va->v[1], va->v[2]);
+			shz_vec3_t	B = shz_vec3_init (vb->v[0], vb->v[1], vb->v[2]);
+			shz_vec3_t	P = shz_vec3_lerp (A, B, bl);
+			px = P.x; py = P.y; pz = P.z;
+			l = shadedots[va->lightnormalindex] * ibl + shadedots[vb->lightnormalindex] * bl;
+		}
+		else
+		{
+			px = va->v[0]; py = va->v[1]; pz = va->v[2];
+			l = shadedots[va->lightnormalindex];
+		}
+
+		dc_posbuf[j * 3 + 0] = px;
+		dc_posbuf[j * 3 + 1] = py;
+		dc_posbuf[j * 3 + 2] = pz;
+
+		r = (int)(l * lightcolor[0] * 255.0f); if (r > 255) r = 255; else if (r < 0) r = 0;
+		g = (int)(l * lightcolor[1] * 255.0f); if (g > 255) g = 255; else if (g < 0) g = 0;
+		b = (int)(l * lightcolor[2] * 255.0f); if (b > 255) b = 255; else if (b < 0) b = 0;
+		dc_argbbuf[j] = ((uint32_t)a8 << 24) | ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)b;
+	}
+
+	st  = (const float *)((byte *)paliashdr + paliashdr->st_dc);
+	idx = (const unsigned short *)((byte *)paliashdr + paliashdr->idx_dc);
+
+	PVR_SetupAliasMatrices (lerpdata.origin, lerpdata.angles, e->scale,
+				paliashdr->scale, paliashdr->scale_origin, fovscale);
+	PVR_SubmitAliasFrame (dc_posbuf, st, dc_argbbuf, idx, nverts, paliashdr->numtris, tx, passkind);
+	PVR_RestoreWorldMatrix ();
+
+	rs_aliaspolys += paliashdr->numtris;
+	rs_aliaspasses += paliashdr->numtris;
+}
+#endif	/* PLATFORM_DREAMCAST && USE_PVR_RENDER */
 
 //johnfitz -- values for shadow matrix
 #define SHADOW_SKEW_X -0.7 //skew along x axis. -0.7 to mimic glquake shadows
