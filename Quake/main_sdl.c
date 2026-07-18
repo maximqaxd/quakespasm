@@ -67,6 +67,11 @@ static int DC_HeapSize (void)
 {
 	const size_t reserve = 3 * 1024 * 1024;
 	const size_t floor   = MINIMUM_MEMORY_LEVELPAK;	/* never return less than Quake requires */
+	/* 9MB. The resident monster set (DC_MHeap, 1.75MB) must live in the hunk, so
+	   the ceiling can't drop to hand that RAM to GLdc's pool without causing
+	   model-reload lag. GLdc's pool pressure is instead a renderer problem (it
+	   buffers the whole frame's OP/PT/TR vertex lists in main RAM) -- the native
+	   PVR path, which submits to the TA directly, is the real fix. */
 	const size_t ceiling = 9 * 1024 * 1024;
 	uintptr_t brk = (uintptr_t) sbrk (0);
 	size_t avail;

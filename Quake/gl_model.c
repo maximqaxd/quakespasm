@@ -101,7 +101,12 @@ void Mod_Init (void)
 	Sounds keep using the real Cache with whatever hunk is left.
 ================================================================================
 */
-#define DC_MHEAP_SIZE	(1792 * 1024)	/* ~1.75MB: holds a fight's worth of visible models */
+#define DC_MHEAP_SIZE	(1792 * 1024)	/* 1.75MB -- sized to hold a whole map's visible
+					   monster set so it never generation-flushes during
+					   play (a flush reloads models from the GD-ROM ->
+					   lag when monsters appear). This must stay resident;
+					   it can't be shrunk to feed GLdc's pool without
+					   reintroducing that reload lag. */
 static byte	*dc_mheap;
 static int	 dc_mheap_used;
 static unsigned	 dc_mheap_gen = 1;	/* qmodel_t.dc_gen==0 means "never loaded" */
