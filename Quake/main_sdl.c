@@ -65,14 +65,14 @@ static void DC_InitThreadStack (void)
 
 static int DC_HeapSize (void)
 {
-	const size_t reserve = 3 * 1024 * 1024;
+	/* GLdc is gone: the native PVR path submits vertices straight to the TA, so
+	   there's no grow-forever main-RAM vertex pool to reserve for. That freed
+	   headroom goes to the hunk -- ceiling up to 11MB, reserve trimmed to ~1.5MB
+	   for SDL/sound/net/temp allocs that live outside the Quake heap. The extra
+	   hunk gives the resident model heap (DC_MHeap) and Cache more room. */
+	const size_t reserve = 3 * 512 * 1024;		/* 1.5MB */
 	const size_t floor   = MINIMUM_MEMORY_LEVELPAK;	/* never return less than Quake requires */
-	/* 9MB. The resident monster set (DC_MHeap, 1.75MB) must live in the hunk, so
-	   the ceiling can't drop to hand that RAM to GLdc's pool without causing
-	   model-reload lag. GLdc's pool pressure is instead a renderer problem (it
-	   buffers the whole frame's OP/PT/TR vertex lists in main RAM) -- the native
-	   PVR path, which submits to the TA directly, is the real fix. */
-	const size_t ceiling = 9 * 1024 * 1024;
+	const size_t ceiling = 11 * 1024 * 1024;
 	uintptr_t brk = (uintptr_t) sbrk (0);
 	size_t avail;
 

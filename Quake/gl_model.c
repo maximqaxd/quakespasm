@@ -83,6 +83,14 @@ void Mod_Init (void)
 }
 
 #if defined(PLATFORM_DREAMCAST)
+// Set to 0 to route alias models through the normal Cache instead of the
+// dedicated model heap. Experiment: now that GLdc's main-RAM vertex pool is
+// gone and the hunk is larger, the Cache may hold the working set without the
+// reload thrash DC_MHeap was built to avoid -- and frees its 1.75MB block.
+#ifndef DC_USE_MHEAP
+#define DC_USE_MHEAP	1
+#endif
+#if DC_USE_MHEAP
 /*
 ================================================================================
 
@@ -154,6 +162,7 @@ static void DC_MHeap_Reset (void)
 	dc_mheap_used = 0;
 	dc_mheap_gen++;
 }
+#endif	/* DC_USE_MHEAP */
 #endif	/* PLATFORM_DREAMCAST */
 
 /*
@@ -167,7 +176,7 @@ void *Mod_Extradata (qmodel_t *mod)
 {
 	void	*r;
 
-#if defined(PLATFORM_DREAMCAST)
+#if defined(PLATFORM_DREAMCAST) && DC_USE_MHEAP
 	// alias models live in the model heap; everything else in the Cache
 	if (mod->type == mod_alias)
 	{
@@ -321,9 +330,11 @@ void Mod_ClearAll (void)
 
 	for (i=0 , mod=mod_known ; i<mod_numknown ; i++, mod++)
 	{
-#if defined(PLATFORM_DREAMCAST)
+#if defined(PLATFORM_DREAMCAST) && DC_USE_MHEAP
 		// the model heap lived in the hunk that's about to be freed: force every
-		// alias model to reload on the new map and drop its skins.
+		// alias model to reload on the new map and drop its skins. (With DC_USE_MHEAP
+		// off, alias models live in the Cache -- which survives the hunk reset -- so
+		// they keep their entry across maps exactly like the desktop path below.)
 		if (mod->type == mod_alias)
 		{
 			mod->needload = true;
@@ -339,7 +350,7 @@ void Mod_ClearAll (void)
 		}
 	}
 
-#if defined(PLATFORM_DREAMCAST)
+#if defined(PLATFORM_DREAMCAST) && DC_USE_MHEAP
 	DC_MHeap_Reset ();
 #endif
 }
@@ -432,7 +443,7 @@ static qmodel_t *Mod_LoadModel (qmodel_t *mod, qboolean crash)
 	{
 		if (mod->type == mod_alias)
 		{
-#if defined(PLATFORM_DREAMCAST)
+#if defined(PLATFORM_DREAMCAST) && DC_USE_MHEAP
 			if (DC_MHeap_Valid (mod))	// resident in the model heap
 				return mod;
 #else
@@ -3217,7 +3228,9 @@ static void Mod_LoadAliasModel (qmodel_t *mod, void *buffer)
 
 #if defined(PLATFORM_DREAMCAST)
 	TexMgr_FreeTexturesForOwner (mod);
+#if DC_USE_MHEAP
 	DC_MHeap_Ensure ();
+#endif
 #endif
 
 	start = Hunk_LowMark ();
@@ -3353,7 +3366,7 @@ static void Mod_LoadAliasModel (qmodel_t *mod, void *buffer)
 	end = Hunk_LowMark ();
 	total = end - start;
 
-#if defined(PLATFORM_DREAMCAST)
+#if defined(PLATFORM_DREAMCAST) && DC_USE_MHEAP
 	DC_MHeap_Store (mod, pheader, total);
 	Hunk_FreeToLowMark (start);
 #else

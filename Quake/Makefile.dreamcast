@@ -45,7 +45,11 @@ BASEFLAGS = -ffast-math -fomit-frame-pointer -Wall -Wno-trigraphs \
             $(INCLUDES) $(DEFINES)
 
 CFLAGS      = $(OPT_SIZE)  $(BASEFLAGS)
-CFLAGS_MATH = $(OPT_SPEED) $(BASEFLAGS)
+# Speed build of the hot paths (mathlib + the PVR render modules). Derived from
+# the final CFLAGS so it keeps every feature define (USE_PVR_RENDER, codecs) --
+# it just swaps -Os for -O3. CFLAGS is expanded lazily, so the conditional
+# defines appended below are included.
+CFLAGS_SPEED = $(filter-out $(OPT_SIZE),$(CFLAGS)) $(OPT_SPEED)
 
 # GLdc + SDL2 + SH4 SIMD math. SDL2 needs KOS pthreads. -lm last.
 # KOS runtime (kallisti/newlib) is added by kos-cc.
@@ -156,9 +160,13 @@ all: quakespasm.elf
 %.o: %.c
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-# Hot math path built for speed, not size.
+# Hot paths built for speed, not size: the SH4 math and the PVR render modules
+# (per-vertex transform/lighting/TA submission) are the per-frame CPU cost.
 mathlib.o: mathlib.c
-	$(CC) $(CFLAGS_MATH) -c -o $@ $<
+	$(CC) $(CFLAGS_SPEED) -c -o $@ $<
+
+pvr_%.o: pvr_%.c
+	$(CC) $(CFLAGS_SPEED) -c -o $@ $<
 
 quakespasm.elf: $(OBJS)
 	$(LINKER) -o $@ $(OBJS) $(LIBS)
