@@ -56,6 +56,16 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "q_stdinc.h"
 
+#if defined(PLATFORM_DREAMCAST)
+// Route engine memcpy() through sh4zam's SH4-tuned implementation. Placed after
+// q_stdinc.h so <string.h>'s prototype is already parsed; the macro only rebinds
+// the calls in engine translation units that include quakedef.h. shz_memcpy is
+// signature-identical to memcpy (dst, src, bytes) and picks the best copy path
+// by size/alignment at runtime. Same non-overlap contract as memcpy.
+#include <shz_mem.h>
+#define memcpy shz_memcpy
+#endif
+
 // !!! if this is changed, it must be changed in d_ifacea.h too !!!
 #define CACHE_SIZE	32	// used to align key data structures
 
