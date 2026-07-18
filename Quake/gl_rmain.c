@@ -961,6 +961,7 @@ void R_RenderScene (void)
 	R_DrawWorld ();                 // OP: solid world (fence + liquid excluded)
 	R_DrawEntitiesOnList (false);   // OP: brush-model entities (mod_brush only, below)
 	R_DrawWorld_Water ();           // OP opaque liquid, then TR translucent liquid
+	PVR_DrawWorld_Fullbright (cl.worldmodel); // TR: additive glow/luma maps
 	PVR_DrawWorld_Fence (cl.worldmodel); // PT: alpha-tested fence surfaces
 	return;
 #endif

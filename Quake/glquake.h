@@ -438,6 +438,8 @@ void PVR_SetupGLMatrices (int scale);
 void PVR_DrawWorld (qmodel_t *model);
 void PVR_DrawWorld_Water (qmodel_t *model);
 void PVR_DrawWorld_Fence (qmodel_t *model);
+void PVR_DrawWorld_Fullbright (qmodel_t *model);
+void PVR_DrawBrushModel_Fullbright (qmodel_t *model);
 // brush-model entities: object transform + their solid/liquid surface chains
 void PVR_SetupEntityMatrices (vec3_t origin, vec3_t angles, unsigned char scale);
 void PVR_RestoreWorldMatrix (void);

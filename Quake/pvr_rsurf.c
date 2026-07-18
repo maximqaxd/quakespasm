@@ -30,6 +30,7 @@ alpha surfaces and brush-model entities are still TODO.
 #define SURF_SKIP_MASK	(SURF_DRAWSKY | SURF_DRAWTURB)
 
 extern int	d_lightstylevalue[256];	// 8.8 lightstyle intensities (gl_rmain.c)
+extern cvar_t	gl_fullbrights;		// r_world.c toggle for the glow pass
 
 /*
 ==============
@@ -261,6 +262,84 @@ void PVR_DrawWorld_Fence (qmodel_t *model)
 void PVR_DrawBrushModel (qmodel_t *model)
 {
 	PVR_DrawChains (model, chain_model);
+}
+
+//------------------------------------------------------------------------------
+// Fullbright / glow pass (mirrors R_DrawTextureChains_Glow)
+//
+// Textures with a luma/glow map (t->fullbright: lava, slime, tech panels, torch
+// wall lights) get a second additive pass so their bright texels ignore the
+// lightmap and glow. The glow map is black except on the glowing texels, so
+// additive blend (ONE,ONE) with a white vertex color adds only the glow. Emitted
+// into the TR list (blended, depth-tested against the opaque world but no depth
+// write) between the translucent water and the PT fence pass.
+//------------------------------------------------------------------------------
+static void PVR_SubmitFlatPoly (glpoly_t *p, uint32_t color)
+{
+	float		uu[PVR_MAX_POLY_VERTS], vv[PVR_MAX_POLY_VERTS];
+	uint32_t	col[PVR_MAX_POLY_VERTS];
+	float		*base = p->verts[0];
+	int		n = p->numverts, i;
+
+	if (n > PVR_MAX_POLY_VERTS)
+		n = PVR_MAX_POLY_VERTS;
+	for (i = 0; i < n; i++)
+	{
+		float *v = base + i * VERTEXSIZE;
+		uu[i]  = v[3];
+		vv[i]  = v[4];
+		col[i] = color;
+	}
+	PVR_EmitPoly (p, uu, vv, col);
+}
+
+static void PVR_DrawGlowChains (qmodel_t *model, texchain_t chain)
+{
+	int		i;
+	texture_t	*t;
+	gltexture_t	*glt;
+	msurface_t	*s;
+
+	if (!gl_fullbrights.value)
+		return;
+
+	PVR_ListBegin (PVR_LIST_TR_POLY);
+	PVR_SetBlend (GL_ONE, GL_ONE);		// additive glow
+	PVR_SetTexEnv (GL_MODULATE);		// texel * white == texel
+
+	for (i = 0; i < model->numtextures; i++)
+	{
+		t = model->textures[i];
+		if (!t || !t->texturechains[chain])
+			continue;
+		if (t->texturechains[chain]->flags & SURF_SKIP_MASK)
+			continue;
+		glt = R_TextureAnimation (t, 0)->fullbright;
+		if (!glt)
+			continue;			// no glow map for this texture
+
+		GL_Bind (glt);
+		PVR_FlushState ();
+
+		for (s = t->texturechains[chain]; s; s = s->texturechain)
+		{
+			if (s->flags & SURF_SKIP_MASK)
+				continue;
+			if (s->polys)
+				PVR_SubmitFlatPoly (s->polys, 0xffffffffu);
+		}
+	}
+}
+
+void PVR_DrawWorld_Fullbright (qmodel_t *model)
+{
+	PVR_DrawGlowChains (model, chain_world);
+}
+
+// Brush-model entity glow surfaces; XMTRX already holds the entity MVP.
+void PVR_DrawBrushModel_Fullbright (qmodel_t *model)
+{
+	PVR_DrawGlowChains (model, chain_model);
 }
 
 #endif	/* PLATFORM_DREAMCAST && USE_PVR_RENDER */

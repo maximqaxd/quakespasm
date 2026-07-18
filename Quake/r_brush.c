@@ -208,6 +208,7 @@ void R_DrawBrushModel (entity_t *e)
 #if defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER)
 	PVR_DrawBrushModel (clmodel);
 	PVR_DrawBrushModel_Water (clmodel);
+	PVR_DrawBrushModel_Fullbright (clmodel);
 	PVR_RestoreWorldMatrix ();
 #else
 	R_DrawTextureChains (clmodel, e, chain_model);
