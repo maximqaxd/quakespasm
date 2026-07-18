@@ -1121,7 +1121,9 @@ void R_DrawTextureChains (qmodel_t *model, entity_t *ent, texchain_t chain)
 	else
 		entalpha = 1;
 
-	R_UploadLightmaps ();
+#if !defined(PLATFORM_DREAMCAST)
+	R_UploadLightmaps ();	
+#endif
 
 	if (r_drawflat_cheatsafe)
 	{
@@ -1174,6 +1176,23 @@ void R_DrawTextureChains (qmodel_t *model, entity_t *ent, texchain_t chain)
 		R_DrawTextureChains_GLSL (model, ent, chain);
 		return;
 	}
+
+#if defined(PLATFORM_DREAMCAST)
+	R_DrawTextureChains_TextureOnly (model, ent, chain);	// pass 1 (base)
+	R_EndTransparentDrawing (entalpha);
+
+	if (entalpha >= 1)	// opaque only; translucent brush ents skip the lightmap pass
+	{
+		glDepthMask (GL_FALSE);
+		glEnable (GL_BLEND);
+		glBlendFunc (gl_overbright.value ? GL_DST_COLOR : GL_ZERO, GL_SRC_COLOR);
+		R_DrawLightmapChains ();				// pass 2 (lightmap, now dynamic)
+		glBlendFunc (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		glDisable (GL_BLEND);
+		glDepthMask (GL_TRUE);
+	}
+	goto fullbrights;
+#endif
 
 	if (gl_overbright.value)
 	{

@@ -284,10 +284,12 @@ called during rendering
 */
 void R_RenderDynamicLightmaps (msurface_t *fa)
 {
+#if !defined(PLATFORM_DREAMCAST)
 	byte		*base;
 	int			maps;
 	glRect_t    *theRect;
 	int smax, tmax;
+#endif
 
 	if (fa->flags & SURF_DRAWTILED) //johnfitz -- not a lightmapped surface
 		return;
@@ -296,6 +298,39 @@ void R_RenderDynamicLightmaps (msurface_t *fa)
 	fa->polys->chain = lightmaps[fa->lightmaptexturenum].polys;
 	lightmaps[fa->lightmaptexturenum].polys = fa->polys;
 
+#if defined(PLATFORM_DREAMCAST)
+	{
+		static byte	dc_lmtemp[LMBLOCK_WIDTH * LMBLOCK_HEIGHT * 2];	/* RGB565 */
+		qboolean	needsupdate = false;
+		int		m, smax, tmax;
+
+		if (!r_dynamic.value)
+			return;
+
+		for (m = 0 ; m < MAXLIGHTMAPS && fa->styles[m] != 255 ; m++)
+			if (d_lightstylevalue[fa->styles[m]] != fa->cached_light[m])
+			{ needsupdate = true; break; }
+
+		if (fa->dlightframe == r_framecount || fa->cached_dlight)
+			needsupdate = true;
+
+		if (!needsupdate)
+			return;
+
+		smax = (fa->extents[0] >> 4) + 1;
+		tmax = (fa->extents[1] >> 4) + 1;
+
+		// R_BuildLightMap bakes styles + this frame's dlights and updates
+		// fa->cached_light / cached_dlight so we self-heal when the light leaves.
+		R_BuildLightMap (fa, dc_lmtemp, smax * 2 /* bytes per row, tight */);
+
+		GL_Bind (lightmaps[fa->lightmaptexturenum].texture);
+		glTexSubImage2D (GL_TEXTURE_2D, 0, fa->light_s, fa->light_t, smax, tmax,
+				 GL_RGB, GL_UNSIGNED_SHORT_5_6_5, dc_lmtemp);
+		rs_dynamiclightmaps++;
+	}
+	return;
+#else
 	// check for lightmap modification
 	for (maps=0; maps < MAXLIGHTMAPS && fa->styles[maps] != 255; maps++)
 		if (d_lightstylevalue[fa->styles[maps]] != fa->cached_light[maps])
@@ -331,6 +366,7 @@ dynamic:
 			R_BuildLightMap (fa, base, LMBLOCK_WIDTH*lightmap_bytes);
 		}
 	}
+#endif	/* !PLATFORM_DREAMCAST */
 }
 
 /*
@@ -606,6 +642,11 @@ void GL_BuildLightmaps (void)
 		lm->texture = TexMgr_LoadImage (cl.worldmodel, name, LMBLOCK_WIDTH, LMBLOCK_HEIGHT,
 						SRC_LIGHTMAP, lm->data, "", (src_offset_t)lm->data, TEXPREF_LINEAR | TEXPREF_NOPICMIP);
 		//johnfitz
+#if defined(PLATFORM_DREAMCAST)
+		lm->texture->source_offset = 0;
+		free (lm->data);
+		lm->data = NULL;
+#endif
 	}
 
 	//johnfitz -- warn about exceeding old limits
