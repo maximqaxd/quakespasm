@@ -51,6 +51,11 @@ CFLAGS      = $(OPT_SIZE)  $(BASEFLAGS)
 # defines appended below are included.
 CFLAGS_SPEED = $(filter-out $(OPT_SIZE),$(CFLAGS)) $(OPT_SPEED)
 
+# Strip symbols/debug info from the linked ELF (-s). The Dreamcast loads only
+# the program segments, so this shrinks the .elf and the packaged .cdi without
+# touching runtime code. Build with STRIP= (empty) to keep symbols for gdb.
+STRIP ?= -s
+
 # GLdc + SDL2 + SH4 SIMD math. SDL2 needs KOS pthreads. -lm last.
 # KOS runtime (kallisti/newlib) is added by kos-cc.
 LIBS     = -L$(SDL2_PREFIX)/lib/dreamcast \
@@ -169,7 +174,7 @@ pvr_%.o: pvr_%.c
 	$(CC) $(CFLAGS_SPEED) -c -o $@ $<
 
 quakespasm.elf: $(OBJS)
-	$(LINKER) -o $@ $(OBJS) $(LIBS)
+	$(LINKER) $(STRIP) -o $@ $(OBJS) $(LIBS)
 
 clean:
 	rm -f $(OBJS) quakespasm.elf
