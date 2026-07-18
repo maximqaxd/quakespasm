@@ -16,6 +16,7 @@ list open/close is wired so the render modules can start submitting via pvr_dr.
 
 int	pvr_frame_list = -1;
 
+static unsigned	pvr_lists_done;		// bitmask of lists already finished this frame
 static qboolean	pvr_inited;
 static float	pvr_clear[3] = { 0.0f, 0.0f, 0.0f };
 
@@ -129,14 +130,31 @@ void PVR_BeginFrame (void)
 	pvr_wait_ready ();
 	pvr_scene_begin ();
 	pvr_frame_list = -1;
+	pvr_lists_done = 0;
 }
 
 void PVR_ListBegin (int list)
 {
 	if (pvr_frame_list == list)
 		return;
+
+	// The PVR opens each list at most once per scene, in hardware order. If a
+	// caller asks to reopen an already-finished list, honoring it would trip KOS
+	// ("attempt to open already closed list") and corrupt the scene. The render
+	// path is structured to submit strictly OP -> TR -> PT, so this is a safety
+	// net: drop the illegal reopen (submits fall into the current list) instead of
+	// misusing the PVR API. If you hit this, a pass is out of phase order.
+	if (pvr_lists_done & (1u << list))
+	{
+		Con_DPrintf ("PVR_ListBegin: list %d already closed this frame\n", list);
+		return;
+	}
+
 	if (pvr_frame_list != -1)
+	{
 		pvr_list_finish ();
+		pvr_lists_done |= (1u << pvr_frame_list);
+	}
 	pvr_list_begin (list);
 	pvr_frame_list = list;
 }
@@ -146,6 +164,7 @@ void PVR_EndFrame (void)
 	if (pvr_frame_list != -1)
 	{
 		pvr_list_finish ();
+		pvr_lists_done |= (1u << pvr_frame_list);
 		pvr_frame_list = -1;
 	}
 	pvr_scene_finish ();

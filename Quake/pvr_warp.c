@@ -115,6 +115,19 @@ static void PVR_DrawWaterChains (qmodel_t *model, texchain_t chain, qboolean tra
 	}
 }
 
+// Split entry points so the scene can place each liquid pass in its own list
+// phase: opaque liquid belongs with the OP work, translucent with the TR work.
+// (The combined PVR_DrawWorld_Water is kept for callers that don't phase.)
+void PVR_DrawWorld_WaterOpaque (qmodel_t *model)
+{
+	PVR_DrawWaterChains (model, chain_world, false);
+}
+
+void PVR_DrawWorld_WaterTrans (qmodel_t *model)
+{
+	PVR_DrawWaterChains (model, chain_world, true);
+}
+
 // Called from r_world.c R_DrawWorld_Water under USE_PVR_RENDER: opaque liquid in
 // the OP list, then translucent liquid in the TR list (must follow all OP work).
 void PVR_DrawWorld_Water (qmodel_t *model)

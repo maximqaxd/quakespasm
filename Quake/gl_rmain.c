@@ -696,6 +696,59 @@ void R_DrawEntitiesOnList (qboolean alphapass) //johnfitz -- added parameter
 	}
 }
 
+#if defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER)
+/*
+================
+PVR_DrawBrushEnts_Solid / PVR_DrawBrushEnts_Fullbright
+
+Phased brush-model entity submission. The PVR opens each list once, in hardware
+order, so entities can't submit solid (OP) then glow (TR) inline -- the next
+entity's solid pass would reopen the closed OP list (KOS "already closed list").
+Instead the scene iterates brush entities once per list phase: solid + opaque
+liquid in the OP phase, additive glow in the TR phase. Each phase rebuilds the
+entity's transient chains via R_PVRBrushModel_Setup.
+================
+*/
+void PVR_DrawBrushEnts_Solid (void)
+{
+	int	i;
+
+	if (!r_drawentities.value)
+		return;
+	for (i = 0; i < cl_numvisedicts; i++)
+	{
+		entity_t *e = cl_visedicts[i];
+		if (!e->model || e->model->type != mod_brush)
+			continue;
+		if (R_PVRBrushModel_Setup (e))
+		{
+			PVR_DrawBrushModel (e->model);		// OP: solid surfaces
+			PVR_DrawBrushModel_Water (e->model);	// OP: opaque liquid
+			PVR_RestoreWorldMatrix ();
+		}
+	}
+}
+
+void PVR_DrawBrushEnts_Fullbright (void)
+{
+	int	i;
+
+	if (!r_drawentities.value || !gl_fullbrights.value)
+		return;
+	for (i = 0; i < cl_numvisedicts; i++)
+	{
+		entity_t *e = cl_visedicts[i];
+		if (!e->model || e->model->type != mod_brush)
+			continue;
+		if (R_PVRBrushModel_Setup (e))
+		{
+			PVR_DrawBrushModel_Fullbright (e->model);	// TR: additive glow
+			PVR_RestoreWorldMatrix ();
+		}
+	}
+}
+#endif	/* PLATFORM_DREAMCAST && USE_PVR_RENDER */
+
 /*
 =============
 R_DrawViewModel -- johnfitz -- gutted
@@ -955,14 +1008,25 @@ void R_RenderScene (void)
 	R_SetupScene (); //johnfitz -- this does everything that should be done once per call to RenderScene
 
 #if defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER)
-	// Strict PVR list order OP -> TR -> PT (the TA renders them in that order, so PT
-	// is last and the 2D HUD on top). sky/shadows/alias/sprite/particles/viewmodel
-	// still submit through GLdc (uninitialized here) and are skipped for now.
-	R_DrawWorld ();                 // OP: solid world (fence + liquid excluded)
-	R_DrawEntitiesOnList (false);   // OP: brush-model entities (mod_brush only, below)
-	R_DrawWorld_Water ();           // OP opaque liquid, then TR translucent liquid
-	PVR_DrawWorld_Fullbright (cl.worldmodel); // TR: additive glow/luma maps
-	PVR_DrawWorld_Fence (cl.worldmodel); // PT: alpha-tested fence surfaces
+	// Strict PVR list order OP -> TR -> PT, each list opened exactly once (the TA
+	// renders them in that order, so PT is last and the 2D HUD sits on top). The
+	// whole scene is grouped by list phase -- brush entities are iterated once per
+	// phase (PVR_DrawBrushEnts_*) rather than each entity spanning lists, which
+	// would reopen a closed list and corrupt the scene.
+	// sky/shadows/alias/sprite/particles/viewmodel are not ported yet.
+
+	// --- OP: opaque solid geometry ---
+	R_DrawWorld ();                           // world solid surfaces
+	PVR_DrawBrushEnts_Solid ();               // brush ents: solid + opaque liquid
+	PVR_DrawWorld_WaterOpaque (cl.worldmodel);// world opaque liquid
+
+	// --- TR: translucent + additive overlays ---
+	PVR_DrawWorld_WaterTrans (cl.worldmodel); // world translucent liquid
+	PVR_DrawWorld_Fullbright (cl.worldmodel); // world glow/luma maps
+	PVR_DrawBrushEnts_Fullbright ();          // brush ents: glow
+
+	// --- PT: alpha-tested cutouts (with the 2D HUD, which renders last) ---
+	PVR_DrawWorld_Fence (cl.worldmodel);      // fence/grate surfaces
 	return;
 #endif
 

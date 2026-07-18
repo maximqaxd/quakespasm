@@ -105,6 +105,8 @@ void	PVR_EmitPoly (struct glpoly_s *p, const float *uu, const float *vv, const u
 
 // Water / sky (pvr_warp.c) -- warped liquid + sky surfaces.
 void	PVR_DrawWorld_Water (qmodel_t *model);
+void	PVR_DrawWorld_WaterOpaque (qmodel_t *model);	// OP phase
+void	PVR_DrawWorld_WaterTrans (qmodel_t *model);	// TR phase
 
 // Fullbright / glow pass (pvr_rsurf.c) -- additive luma-map overlay.
 void	PVR_DrawWorld_Fullbright (qmodel_t *model);

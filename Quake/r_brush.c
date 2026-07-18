@@ -121,6 +121,84 @@ void DrawGLTriangleFan (glpoly_t *p)
 =============================================================
 */
 
+#if defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER)
+/*
+=================
+R_PVRBrushModel_Setup -- prepare a brush-model entity for PVR submission
+
+Cull, mark dynamic lights on the submodel, load the entity MVP into XMTRX, and
+(re)build the entity's chain_model surface chains. Returns false if culled.
+
+Factored out of R_DrawBrushModel so the scene can iterate the brush entities
+once per PVR list phase (OP, then TR): the PVR requires each list be opened
+exactly once in hardware order, so an entity can't submit solid (OP) then glow
+(TR) inline -- the next entity's solid pass would reopen the closed OP list. The
+chains are transient (per model), so each phase rebuilds them via this call; on
+true the caller submits the phase's list(s) then PVR_RestoreWorldMatrix.
+=================
+*/
+qboolean R_PVRBrushModel_Setup (entity_t *e)
+{
+	int			i, k;
+	msurface_t	*psurf;
+	float		dot;
+	mplane_t	*pplane;
+	qmodel_t	*clmodel;
+
+	if (R_CullModelForEntity(e))
+		return false;
+
+	currententity = e;
+	clmodel = e->model;
+
+	VectorSubtract (r_refdef.vieworg, e->origin, modelorg);
+	if (e->angles[0] || e->angles[1] || e->angles[2])
+	{
+		vec3_t	temp;
+		vec3_t	forward, right, up;
+
+		VectorCopy (modelorg, temp);
+		AngleVectors (e->angles, forward, right, up);
+		modelorg[0] = DotProduct (temp, forward);
+		modelorg[1] = -DotProduct (temp, right);
+		modelorg[2] = DotProduct (temp, up);
+	}
+
+	psurf = &clmodel->surfaces[clmodel->firstmodelsurface];
+
+	// dynamic lighting for the bmodel if it's not an instanced model
+	if (clmodel->firstmodelsurface != 0 && !gl_flashblend.value)
+	{
+		for (k=0 ; k<MAX_DLIGHTS ; k++)
+		{
+			if ((cl_dlights[k].die < cl.time) || (!cl_dlights[k].radius))
+				continue;
+			R_MarkLights (&cl_dlights[k], k,
+				clmodel->nodes + clmodel->hulls[0].firstclipnode);
+		}
+	}
+
+	e->angles[0] = -e->angles[0];	// stupid quake bug
+	PVR_SetupEntityMatrices (e->origin, e->angles, e->scale);
+	e->angles[0] = -e->angles[0];	// stupid quake bug
+
+	R_ClearTextureChains (clmodel, chain_model);
+	for (i=0 ; i<clmodel->nummodelsurfaces ; i++, psurf++)
+	{
+		pplane = psurf->plane;
+		dot = DotProduct (modelorg, pplane->normal) - pplane->dist;
+		if (((psurf->flags & SURF_PLANEBACK) && (dot < -BACKFACE_EPSILON)) ||
+			(!(psurf->flags & SURF_PLANEBACK) && (dot > BACKFACE_EPSILON)))
+		{
+			R_ChainSurface (psurf, chain_model);
+			R_RenderDynamicLightmaps(psurf);
+			rs_brushpolys++;
+		}
+	}
+	return true;
+}
+#endif	/* PLATFORM_DREAMCAST && USE_PVR_RENDER */
+
 /*
 =================
 R_DrawBrushModel
@@ -128,6 +206,19 @@ R_DrawBrushModel
 */
 void R_DrawBrushModel (entity_t *e)
 {
+#if defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER)
+	// Opaque-only single-entity path (kept for completeness). The scene actually
+	// drives brush ents through the phased R_PVRBrushModel_Setup loops in
+	// R_RenderScene so lists stay in order; glow goes in the TR phase there.
+	qmodel_t *clmodel;
+
+	if (!R_PVRBrushModel_Setup (e))
+		return;
+	clmodel = e->model;
+	PVR_DrawBrushModel (clmodel);
+	PVR_DrawBrushModel_Water (clmodel);
+	PVR_RestoreWorldMatrix ();
+#else
 	int			i, k;
 	msurface_t	*psurf;
 	float		dot;
@@ -171,9 +262,6 @@ void R_DrawBrushModel (entity_t *e)
 	}
 
 	e->angles[0] = -e->angles[0];	// stupid quake bug
-#if defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER)
-	PVR_SetupEntityMatrices (e->origin, e->angles, e->scale);
-#else
 	glPushMatrix ();
 	if (gl_zfix.value)
 	{
@@ -188,7 +276,6 @@ void R_DrawBrushModel (entity_t *e)
 		e->origin[1] += DIST_EPSILON;
 		e->origin[2] += DIST_EPSILON;
 	}
-#endif
 	e->angles[0] = -e->angles[0];	// stupid quake bug
 
 	R_ClearTextureChains (clmodel, chain_model);
@@ -205,12 +292,6 @@ void R_DrawBrushModel (entity_t *e)
 		}
 	}
 
-#if defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER)
-	PVR_DrawBrushModel (clmodel);
-	PVR_DrawBrushModel_Water (clmodel);
-	PVR_DrawBrushModel_Fullbright (clmodel);
-	PVR_RestoreWorldMatrix ();
-#else
 	R_DrawTextureChains (clmodel, e, chain_model);
 	R_DrawTextureChains_Water (clmodel, e, chain_model);
 
