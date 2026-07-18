@@ -279,7 +279,9 @@ static void BuildTris (void)
 	Con_DPrintf2 ("%3i tri %3i vert %3i cmd\n", pheader->numtris, numorder, numcommands);
 }
 
+#if !defined(PLATFORM_DREAMCAST)
 static void GL_MakeAliasModelDisplayLists_VBO (qmodel_t *, aliashdr_t *);
+#endif
 static void GLMesh_LoadVertexBuffer (qmodel_t *m, const aliashdr_t *hdr);
 
 /*
@@ -339,8 +341,69 @@ void GL_MakeAliasModelDisplayLists (qmodel_t *m, aliashdr_t *hdr)
 		for (j=0 ; j<numorder ; j++)
 			*verts++ = poseverts[i][vertexorder[j]];
 
+#if defined(PLATFORM_DREAMCAST)
+	{
+		float			*st_dc;
+		unsigned short	*idx_dc;
+		int				*cmd;
+		int				vnum = 0, nidx = 0;
+
+		st_dc = (float *) Hunk_Alloc (paliashdr->poseverts * 2 * sizeof(float));
+		idx_dc = (unsigned short *) Hunk_Alloc (paliashdr->numtris * 3 * sizeof(unsigned short));
+		paliashdr->st_dc = (byte *)st_dc - (byte *)paliashdr;
+		paliashdr->idx_dc = (byte *)idx_dc - (byte *)paliashdr;
+
+		cmd = (int *)((byte *)paliashdr + paliashdr->commands);
+		while (1)
+		{
+			int count = *cmd++;
+			int k, first = vnum, prev = 0, pprev = 0;
+			qboolean fan;
+
+			if (!count)
+				break;
+			fan = (count < 0);
+			if (fan)
+				count = -count;
+
+			for (k = 0 ; k < count ; k++)
+			{
+				int cur = vnum;
+				st_dc[cur*2+0] = ((float *)cmd)[0];
+				st_dc[cur*2+1] = ((float *)cmd)[1];
+				cmd += 2;
+				vnum++;
+
+				if (k >= 2)
+				{
+					if (fan)
+					{
+						idx_dc[nidx++] = first;
+						idx_dc[nidx++] = prev;
+						idx_dc[nidx++] = cur;
+					}
+					else if (k & 1)	// odd: keep winding consistent
+					{
+						idx_dc[nidx++] = prev;
+						idx_dc[nidx++] = pprev;
+						idx_dc[nidx++] = cur;
+					}
+					else
+					{
+						idx_dc[nidx++] = pprev;
+						idx_dc[nidx++] = prev;
+						idx_dc[nidx++] = cur;
+					}
+				}
+				pprev = prev;
+				prev = cur;
+			}
+		}
+	}
+#else
 	// ericw
 	GL_MakeAliasModelDisplayLists_VBO (m, paliashdr);
+#endif
 }
 
 /*
@@ -353,6 +416,7 @@ is copied to Mod_Extradata.
 Original code by MH from RMQEngine
 ================
 */
+#if !defined(PLATFORM_DREAMCAST)
 static void GL_MakeAliasModelDisplayLists_VBO (qmodel_t *aliasmodel, aliashdr_t *paliashdr)
 {
 	int i, j;
@@ -433,6 +497,7 @@ static void GL_MakeAliasModelDisplayLists_VBO (qmodel_t *aliasmodel, aliashdr_t 
 	// upload immediately
 	GLMesh_LoadVertexBuffer (aliasmodel, pheader);
 }
+#endif	/* !PLATFORM_DREAMCAST */
 
 /*
 ================

@@ -369,6 +369,11 @@ typedef struct {
 	int					poseverts;
 	int					posedata;	// numposes*poseverts trivert_t
 	int					commands;	// gl command list with embedded s/t
+#if defined(PLATFORM_DREAMCAST)
+	// maximqad -- DC indexed alias fast path (built from the command stream):
+	int					st_dc;		// offset: poseverts * 2 floats (normalized texcoords per slot)
+	int					idx_dc;		// offset: numtris * 3 unsigned short (triangle indices into posedata slots)
+#endif
 	struct gltexture_s	*gltextures[MAX_SKINS][4]; //johnfitz
 	struct gltexture_s	*fbtextures[MAX_SKINS][4]; //johnfitz
 	int					texels[MAX_SKINS];	// only for player skins
@@ -499,6 +504,13 @@ typedef struct qmodel_s
 // additional model data
 //
 	cache_user_t	cache;		// only access through Mod_Extradata
+#if defined(PLATFORM_DREAMCAST)
+	// maximqad -- alias models live in a dedicated model heap (DC_MHeap), NOT
+	// Quake's Cache. dc_extradata points into that heap; dc_gen is the heap
+	// generation it was loaded in (stale if != current generation).
+	void		*dc_extradata;
+	unsigned	dc_gen;
+#endif
 
 } qmodel_t;
 

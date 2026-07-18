@@ -82,6 +82,75 @@ void Mod_Init (void)
 	//johnfitz
 }
 
+#if defined(PLATFORM_DREAMCAST)
+/*
+================================================================================
+
+	DC_MHeap -- maximqad -- dedicated alias-model heap
+
+	Alias models are built on the hunk (transient) and then copied here, a fixed
+	block allocated once per map. Keeping them out of Quake's Cache is the whole
+	point: a model reload grows hunk_low, and Hunk_Alloc calls Cache_FreeLow,
+	which frees cache entries sitting just above hunk_low -- i.e. OTHER cached
+	models -- cascading into a per-frame reload thrash (soldier evicts dog evicts
+	soldier ...). This heap never participates in that.
+
+	Allocation is a bump pointer. When it fills, we bump a generation counter,
+	which invalidates every entry at once (they reload). If the visible working
+	set fits the heap, this happens ~never and steady state is zero reloads.
+	Sounds keep using the real Cache with whatever hunk is left.
+================================================================================
+*/
+#define DC_MHEAP_SIZE	(1792 * 1024)	/* ~1.75MB: holds a fight's worth of visible models */
+static byte	*dc_mheap;
+static int	 dc_mheap_used;
+static unsigned	 dc_mheap_gen = 1;	/* qmodel_t.dc_gen==0 means "never loaded" */
+
+static qboolean DC_MHeap_Valid (qmodel_t *mod)
+{
+	return (mod->dc_extradata != NULL && mod->dc_gen == dc_mheap_gen);
+}
+
+// Allocate the heap block. MUST be called before the caller takes its
+// Hunk_LowMark for the model build, so the block sits BELOW that mark and
+// survives the build's Hunk_FreeToLowMark.
+static void DC_MHeap_Ensure (void)
+{
+	if (!dc_mheap)
+	{
+		dc_mheap = (byte *) Hunk_AllocName (DC_MHEAP_SIZE, "dcmheap");
+		dc_mheap_used = 0;
+	}
+}
+
+// copy a freshly-built model (from the hunk) into the model heap
+static void *DC_MHeap_Store (qmodel_t *mod, void *src, int size)
+{
+	int aligned = (size + 15) & ~15;
+
+	if (aligned > DC_MHEAP_SIZE)
+		Sys_Error ("DC_MHeap_Store: %s (%d bytes) larger than model heap", mod->name, size);
+	if (dc_mheap_used + aligned > DC_MHEAP_SIZE)
+	{	// full -> flush all entries via a generation bump, restart the bump ptr
+		dc_mheap_used = 0;
+		dc_mheap_gen++;
+	}
+	mod->dc_extradata = dc_mheap + dc_mheap_used;
+	mod->dc_gen = dc_mheap_gen;
+	dc_mheap_used += aligned;
+	memcpy (mod->dc_extradata, src, size);
+	return mod->dc_extradata;
+}
+
+// map change frees the hunk (and the heap block) -> start fresh
+static void DC_MHeap_Reset (void)
+{
+	dc_mheap = NULL;
+	dc_mheap_used = 0;
+	dc_mheap_gen++;
+}
+#endif	/* PLATFORM_DREAMCAST */
+
 /*
 ===============
 Mod_Extradata
@@ -92,6 +161,21 @@ Caches the data if needed
 void *Mod_Extradata (qmodel_t *mod)
 {
 	void	*r;
+
+#if defined(PLATFORM_DREAMCAST)
+	// alias models live in the model heap; everything else in the Cache
+	if (mod->type == mod_alias)
+	{
+		if (!mod->needload && DC_MHeap_Valid (mod))
+			return mod->dc_extradata;
+
+		Mod_LoadModel (mod, true);
+
+		if (!mod->dc_extradata)
+			Sys_Error ("Mod_Extradata: model heap load failed");
+		return mod->dc_extradata;
+	}
+#endif
 
 	r = Cache_Check (&mod->cache);
 	if (r)
@@ -232,12 +316,27 @@ void Mod_ClearAll (void)
 
 	for (i=0 , mod=mod_known ; i<mod_numknown ; i++, mod++)
 	{
+#if defined(PLATFORM_DREAMCAST)
+		// the model heap lived in the hunk that's about to be freed: force every
+		// alias model to reload on the new map and drop its skins.
+		if (mod->type == mod_alias)
+		{
+			mod->needload = true;
+			mod->dc_extradata = NULL;
+			TexMgr_FreeTexturesForOwner (mod);
+			continue;
+		}
+#endif
 		if (mod->type != mod_alias)
 		{
 			mod->needload = true;
 			TexMgr_FreeTexturesForOwner (mod); //johnfitz
 		}
 	}
+
+#if defined(PLATFORM_DREAMCAST)
+	DC_MHeap_Reset ();
+#endif
 }
 
 void Mod_ResetAll (void)
@@ -328,8 +427,13 @@ static qmodel_t *Mod_LoadModel (qmodel_t *mod, qboolean crash)
 	{
 		if (mod->type == mod_alias)
 		{
+#if defined(PLATFORM_DREAMCAST)
+			if (DC_MHeap_Valid (mod))	// resident in the model heap
+				return mod;
+#else
 			if (Cache_Check (&mod->cache))
 				return mod;
+#endif
 		}
 		else
 			return mod;		// not cached at all
@@ -3102,6 +3206,11 @@ static void Mod_LoadAliasModel (qmodel_t *mod, void *buffer)
 	daliasskintype_t	*pskintype;
 	int					start, end, total;
 
+#if defined(PLATFORM_DREAMCAST)
+	TexMgr_FreeTexturesForOwner (mod);
+	DC_MHeap_Ensure ();
+#endif
+
 	start = Hunk_LowMark ();
 
 	pinmodel = (mdl_t *)buffer;
@@ -3235,12 +3344,17 @@ static void Mod_LoadAliasModel (qmodel_t *mod, void *buffer)
 	end = Hunk_LowMark ();
 	total = end - start;
 
+#if defined(PLATFORM_DREAMCAST)
+	DC_MHeap_Store (mod, pheader, total);
+	Hunk_FreeToLowMark (start);
+#else
 	Cache_Alloc (&mod->cache, total, loadname);
 	if (!mod->cache.data)
 		return;
 	memcpy (mod->cache.data, pheader, total);
 
 	Hunk_FreeToLowMark (start);
+#endif
 }
 
 //=============================================================================

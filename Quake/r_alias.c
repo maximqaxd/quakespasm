@@ -24,6 +24,13 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 
+#if defined(PLATFORM_DREAMCAST)
+#include <shz_vector.h>	// maximqad -- SH4 SIMD vector lerp for the batched drawer
+// Reused per-frame scratch for the DC indexed fast path (see GL_DrawAliasFrame).
+static float	dc_posbuf[MAXALIASVERTS*3];
+static float	dc_colbuf[MAXALIASVERTS*4];
+#endif
+
 extern cvar_t r_drawflat, gl_overbright_models, gl_fullbrights, r_lerpmodels, r_lerpmove; //johnfitz
 extern cvar_t scr_fov, cl_gun_fovscale;
 
@@ -303,6 +310,86 @@ void GL_DrawAliasFrame (aliashdr_t *paliashdr, lerpdata_t lerpdata)
 	float	u,v;
 	float	blend, iblend;
 	qboolean lerping;
+#if defined(PLATFORM_DREAMCAST)
+	if (!r_drawflat_cheatsafe && paliashdr->poseverts <= MAXALIASVERTS)
+	{
+		const float		*stptr = (const float *)((byte *)paliashdr + paliashdr->st_dc);
+		const unsigned short	*idx = (const unsigned short *)((byte *)paliashdr + paliashdr->idx_dc);
+		trivertx_t		*pv1, *pv2;
+		int			j, nverts = paliashdr->poseverts;
+		int			numindexes = paliashdr->numtris * 3;
+		qboolean		dolerp = (lerpdata.pose1 != lerpdata.pose2);
+		float			bl, ibl;
+
+		pv1 = (trivertx_t *)((byte *)paliashdr + paliashdr->posedata) + lerpdata.pose1 * paliashdr->poseverts;
+		if (dolerp)
+		{
+			pv2 = (trivertx_t *)((byte *)paliashdr + paliashdr->posedata) + lerpdata.pose2 * paliashdr->poseverts;
+			bl = lerpdata.blend;
+			ibl = 1.0f - bl;
+		}
+		else
+		{
+			pv2 = pv1;
+			bl = 0.0f;
+			ibl = 1.0f;
+		}
+
+		for (j = 0 ; j < nverts ; j++)
+		{
+			trivertx_t *a = pv1 + j;
+			trivertx_t *b = pv2 + j;
+
+			if (dolerp)
+			{
+				shz_vec3_t va = shz_vec3_init (a->v[0], a->v[1], a->v[2]);
+				shz_vec3_t vb = shz_vec3_init (b->v[0], b->v[1], b->v[2]);
+				shz_vec3_t vp = shz_vec3_lerp (va, vb, bl);
+				dc_posbuf[j*3+0] = vp.x;
+				dc_posbuf[j*3+1] = vp.y;
+				dc_posbuf[j*3+2] = vp.z;
+			}
+			else
+			{
+				dc_posbuf[j*3+0] = a->v[0];
+				dc_posbuf[j*3+1] = a->v[1];
+				dc_posbuf[j*3+2] = a->v[2];
+			}
+
+			if (shading)
+			{
+				float l = dolerp
+					? (shadedots[a->lightnormalindex]*ibl + shadedots[b->lightnormalindex]*bl)
+					: shadedots[a->lightnormalindex];
+				dc_colbuf[j*4+0] = entalpha;			// A
+				dc_colbuf[j*4+1] = l * lightcolor[0];	// R
+				dc_colbuf[j*4+2] = l * lightcolor[1];	// G
+				dc_colbuf[j*4+3] = l * lightcolor[2];	// B
+			}
+		}
+
+		glEnableClientState (GL_VERTEX_ARRAY);
+		glVertexPointer (3, GL_FLOAT, 0, dc_posbuf);
+		glEnableClientState (GL_TEXTURE_COORD_ARRAY);
+		glTexCoordPointer (2, GL_FLOAT, 0, stptr);
+		if (shading)
+		{
+			glEnableClientState (GL_COLOR_ARRAY);
+			glColorPointer (4, GL_FLOAT, 0, dc_colbuf);
+		}
+		else
+			glDisableClientState (GL_COLOR_ARRAY);	// caller-set glColor applies to all verts
+
+		glDrawElements (GL_TRIANGLES, numindexes, GL_UNSIGNED_SHORT, idx);
+
+		glDisableClientState (GL_VERTEX_ARRAY);
+		glDisableClientState (GL_TEXTURE_COORD_ARRAY);
+		glDisableClientState (GL_COLOR_ARRAY);
+
+		rs_aliaspasses += paliashdr->numtris;
+		return;
+	}
+#endif
 
 	if (lerpdata.pose1 != lerpdata.pose2)
 	{
