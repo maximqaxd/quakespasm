@@ -434,6 +434,20 @@ void M_ScanSaves (void)
 	{
 		strcpy (m_filenames[i], "--- UNUSED SLOT ---");
 		loadable[i] = false;
+#if defined(PLATFORM_DREAMCAST)
+		// Saves live on the VMU; read the stored comment (no decompress needed).
+		q_snprintf (name, sizeof(name), "s%i", i);
+		if (DC_VMU_GetSaveComment (name, m_filenames[i], SAVEGAME_COMMENT_LENGTH+1))
+		{
+			for (j = 0; j < SAVEGAME_COMMENT_LENGTH; j++)
+				if (m_filenames[i][j] == '_')
+					m_filenames[i][j] = ' ';
+			loadable[i] = true;
+		}
+		else
+			strcpy (m_filenames[i], "--- UNUSED SLOT ---");
+		continue;
+#endif
 		q_snprintf (name, sizeof(name), "%s/s%i.sav", com_gamedir, i);
 		f = fopen (name, "r");
 		if (!f) {

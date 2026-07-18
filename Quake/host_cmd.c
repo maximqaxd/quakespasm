@@ -1126,10 +1126,16 @@ static void Host_Savegame_f (void)
 		}
 	}
 
+#if defined(PLATFORM_DREAMCAST)
+	// The CD is read-only: write the .sav to the ramdisk, then compress it to the VMU.
+	q_snprintf (name, sizeof(name), "/ram/%s.sav", Cmd_Argv(1));
+	Con_Printf ("Saving game to VMU (%s)...\n", Cmd_Argv(1));
+#else
 	q_snprintf (name, sizeof(name), "%s/%s", com_gamedir, Cmd_Argv(1));
 	COM_AddExtension (name, ".sav", sizeof(name));
 
 	Con_Printf ("Saving game to %s...\n", name);
+#endif
 	f = fopen (name, "w");
 	if (!f)
 	{
@@ -1163,6 +1169,14 @@ static void Host_Savegame_f (void)
 	}
 	fclose (f);
 	Host_SyncExternalFS();
+#if defined(PLATFORM_DREAMCAST)
+	if (DC_VMU_SaveGame (Cmd_Argv(1), sv.name, comment))
+		Con_Printf ("done.\n");
+	else
+		Con_Printf ("ERROR: VMU save failed (card full or missing?)\n");
+	remove (name);				// drop the ramdisk temp
+	return;
+#endif
 	Con_Printf ("done.\n");
 }
 
@@ -1208,8 +1222,18 @@ static void Host_Loadgame_f (void)
 
 	cls.demonum = -1;		// stop demo loop in case this fails
 
+#if defined(PLATFORM_DREAMCAST)
+	// Decompress the VMU file onto the ramdisk, then read it back normally.
+	q_snprintf (name, sizeof(name), "/ram/%s.sav", Cmd_Argv(1));
+	if (!DC_VMU_LoadGame (Cmd_Argv(1)))
+	{
+		Con_Printf ("ERROR: couldn't load from VMU.\n");
+		return;
+	}
+#else
 	q_snprintf (name, sizeof(name), "%s/%s", com_gamedir, Cmd_Argv(1));
 	COM_AddExtension (name, ".sav", sizeof(name));
+#endif
 
 // we can't call SCR_BeginLoadingPlaque, because too much stack space has
 // been used.  The menu calls it before stuffing loadgame command

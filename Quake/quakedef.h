@@ -282,6 +282,15 @@ typedef struct
 #include "cdaudio.h"
 #include "glquake.h"
 
+#if defined(PLATFORM_DREAMCAST)
+// pl_vmu.c -- savegames/config live on the VMU (the CD is read-only)
+qboolean DC_VMU_SaveGame (const char *savename, const char *mapname, const char *comment);
+qboolean DC_VMU_LoadGame (const char *savename);
+qboolean DC_VMU_GetSaveComment (const char *savename, char *out, int outsize);
+qboolean DC_VMU_WriteConfig (const void *data, int len);
+byte *DC_VMU_ReadConfig (int *out_len);
+#endif
+
 
 //=============================================================================
 

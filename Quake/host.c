@@ -333,7 +333,12 @@ void Host_WriteConfiguration (void)
 // config.cfg cvars
 	if (host_initialized && !isDedicated && !host_parms->errstate)
 	{
+#if defined(PLATFORM_DREAMCAST)
+		// CD is read-only: build into the ramdisk, then store on the VMU.
+		f = fopen ("/ram/config.cfg", "w");
+#else
 		f = fopen (va("%s/config.cfg", com_gamedir), "w");
+#endif
 		if (!f)
 		{
 			Con_Printf ("Couldn't write config.cfg.\n");
@@ -352,6 +357,24 @@ void Host_WriteConfiguration (void)
 
 		fclose (f);
 		Host_SyncExternalFS();
+
+#if defined(PLATFORM_DREAMCAST)
+		{
+			FILE *rf = fopen ("/ram/config.cfg", "rb");
+			if (rf)
+			{
+				long	len;
+				char	*buf;
+				fseek (rf, 0, SEEK_END); len = ftell (rf); fseek (rf, 0, SEEK_SET);
+				buf = (len > 0) ? (char *) malloc (len) : NULL;
+				if (buf && fread (buf, 1, len, rf) == (size_t)len)
+					DC_VMU_WriteConfig (buf, (int)len);
+				free (buf);
+				fclose (rf);
+			}
+			remove ("/ram/config.cfg");
+		}
+#endif
 	}
 }
 
@@ -915,6 +938,20 @@ void Host_Init (void)
 	// johnfitz -- in case the vid mode was locked during vid_init, we can unlock it now.
 		// note: two leading newlines because the command buffer swallows one of them.
 		Cbuf_AddText ("\n\nvid_unlock\n");
+#if defined(PLATFORM_DREAMCAST)
+		// Apply the player's saved settings from the VMU. Appended (not inserted),
+		// so it runs after quake.rc's config.cfg and overrides the CD defaults.
+		{
+			int	clen = 0;
+			byte	*cfg = DC_VMU_ReadConfig (&clen);
+			if (cfg)
+			{
+				Cbuf_AddText ((const char *)cfg);
+				Cbuf_AddText ("\n");
+				free (cfg);
+			}
+		}
+#endif
 	}
 
 	if (cls.state == ca_dedicated)

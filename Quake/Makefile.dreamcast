@@ -31,6 +31,7 @@ INCLUDES = -I. \
            -I$(SDL2_PREFIX)/include \
            -I$(SDL2_PREFIX)/include/SDL2 \
            -I$(KOS_PORTS)/include \
+           -I$(KOS_PORTS)/zlib/inst/include \
            -I$(KOS_PORTS)/sh4zam/inst/include
 
 DEFINES  = -DPLATFORM_DREAMCAST -DUSE_SDL2 -DNO_SDL_CONFIG -DGLQUAKE
@@ -50,7 +51,7 @@ CFLAGS_MATH = $(OPT_SPEED) $(BASEFLAGS)
 # KOS runtime (kallisti/newlib) is added by kos-cc.
 LIBS     = -L$(SDL2_PREFIX)/lib/dreamcast \
            -lSDL2 -lpthread \
-           -lGL -lsh4zam -lm
+           -lGL -lsh4zam -lz -lm
 
 # ---------------------------
 # Codec wiring
@@ -99,7 +100,7 @@ SYSOBJ_GL_VID= gl_vidsdl.o
 SYSOBJ_TEXMGR= gl_texmgr.o
 SYSOBJ_DRAW  = gl_draw.o
 SYSOBJ_NET   = net_bsd.o net_udp.o
-SYSOBJ_SYS   = pl_linux.o sys_sdl_unix.o
+SYSOBJ_SYS   = pl_linux.o sys_sdl_unix.o pl_vmu.o
 SYSOBJ_MAIN  = main_sdl.o
 
 GLOBJS = \
