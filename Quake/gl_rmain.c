@@ -949,10 +949,11 @@ void R_RenderScene (void)
 	R_SetupScene (); //johnfitz -- this does everything that should be done once per call to RenderScene
 
 #if defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER)
-	// PVR world pass only for now (sky/shadows/entities/water/particles/viewmodel
+	// PVR world + liquid passes for now (sky/shadows/entities/particles/viewmodel
 	// still submit through GLdc, which isn't initialized on this path). These come
 	// online as their pvr_ modules land.
 	R_DrawWorld ();
+	R_DrawWorld_Water ();
 	return;
 #endif
 

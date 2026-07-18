@@ -432,10 +432,11 @@ void R_DrawTextureChains (qmodel_t *model, entity_t *ent, texchain_t chain);
 void R_DrawWorld_Water (void);
 
 #if defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER)
-// native PVR renderer view/world entry points (pvr_rmain.c / pvr_rsurf.c). Plain
-// prototypes only -- the PVR headers (dc/pvr.h) can't be pulled in here.
+// native PVR renderer view/world entry points (pvr_rmain.c / pvr_rsurf.c /
+// pvr_warp.c). Plain prototypes only -- the PVR headers (dc/pvr.h) can't be here.
 void PVR_SetupGLMatrices (int scale);
 void PVR_DrawWorld (qmodel_t *model);
+void PVR_DrawWorld_Water (qmodel_t *model);
 #endif
 
 void GL_BindBuffer (GLenum target, GLuint buffer);

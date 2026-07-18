@@ -96,6 +96,16 @@ void	PVR_Flush2D (void);
 void	PVR_SetupGLMatrices (int scale);
 void	PVR_DrawWorld (qmodel_t *model);
 
+// Shared surface emit (pvr_rsurf.c): transform a world-space glpoly to clip space,
+// near-plane clip, and emit as a triangle strip / clipped tris, with per-vertex
+// texcoords (uu/vv) and colors (col) supplied by the caller (arrays >= this many).
+// Used by both the lit world pass and pvr_warp's water.
+#define PVR_MAX_POLY_VERTS	64
+void	PVR_EmitPoly (struct glpoly_s *p, const float *uu, const float *vv, const uint32_t *col);
+
+// Water / sky (pvr_warp.c) -- warped liquid + sky surfaces.
+void	PVR_DrawWorld_Water (qmodel_t *model);
+
 extern int	pvr_frame_list;			// currently open list, -1 if none
 
 //==============================================================================

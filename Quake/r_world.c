@@ -1335,7 +1335,11 @@ void R_DrawWorld_Water (void)
 	if (!r_drawworld_cheatsafe)
 		return;
 
+#if defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER)
+	PVR_DrawWorld_Water (cl.worldmodel);
+#else
 	R_DrawTextureChains_Water (cl.worldmodel, NULL, chain_world);
+#endif
 }
 
 /*

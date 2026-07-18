@@ -29,8 +29,6 @@ alpha surfaces and brush-model entities are still TODO.
 // SURF_ flags for surfaces we skip in the opaque pass (sky + warped water)
 #define SURF_SKIP_MASK	(SURF_DRAWSKY | SURF_DRAWTURB)
 
-#define MAX_POLY_VERTS	64	// bound the per-poly clip-space scratch
-
 extern int	d_lightstylevalue[256];	// 8.8 lightstyle intensities (gl_rmain.c)
 
 /*
@@ -75,17 +73,18 @@ static uint32_t PVR_LightVertex (msurface_t *surf, const float *v)
 }
 
 //------------------------------------------------------------------------------
-// Emit one surface polygon (a convex fan) with near-plane clipping
+// Emit one convex-fan polygon with near-plane clipping (shared by world + warp)
 //
 // Transform each vertex to clip space against the XMTRX MVP, flag which are in
 // front of the near plane (w >= z), then: skip if none visible; fast-path the
-// common all-visible case as fan triangles; otherwise clip each triangle.
+// common all-visible case as a triangle strip; otherwise clip each fan triangle.
+// Per-vertex texcoords (uu/vv) and colors (col) are supplied by the caller so the
+// world (lit, straight texcoords) and pvr_warp (fullbright, warped texcoords) can
+// share this transform/clip/emit core. Arrays are sized to p->numverts.
 //------------------------------------------------------------------------------
-static void PVR_SubmitPoly (glpoly_t *p, msurface_t *surf)
+void PVR_EmitPoly (glpoly_t *p, const float *uu, const float *vv, const uint32_t *col)
 {
-	shz_vec4_t	clip[MAX_POLY_VERTS];
-	float		uu[MAX_POLY_VERTS], vv[MAX_POLY_VERTS];
-	uint32_t	col[MAX_POLY_VERTS];
+	shz_vec4_t	clip[PVR_MAX_POLY_VERTS];
 	int		n = p->numverts;
 	float		*base = p->verts[0];
 	unsigned	vismask = 0, allvis;
@@ -93,16 +92,13 @@ static void PVR_SubmitPoly (glpoly_t *p, msurface_t *surf)
 
 	if (n < 3)
 		return;
-	if (n > MAX_POLY_VERTS)
-		n = MAX_POLY_VERTS;
+	if (n > PVR_MAX_POLY_VERTS)
+		n = PVR_MAX_POLY_VERTS;
 
 	for (i = 0; i < n; i++)
 	{
 		float *v = base + i * VERTEXSIZE;
 		clip[i] = shz_xmtrx_transform_vec4 (shz_vec4_init (v[0], v[1], v[2], 1.0f));
-		uu[i] = v[3];
-		vv[i] = v[4];
-		col[i] = PVR_LightVertex (surf, v);
 		if (clip[i].w >= clip[i].z + PVR_NEAR_CLIP_EPSILON)
 			vismask |= (1u << i);
 	}
@@ -147,6 +143,26 @@ static void PVR_SubmitPoly (glpoly_t *p, msurface_t *surf)
 	}
 }
 
+// Fill a surface poly's per-vertex texcoords (straight) + lit colors, then emit.
+static void PVR_SubmitLitPoly (glpoly_t *p, msurface_t *surf)
+{
+	float		uu[PVR_MAX_POLY_VERTS], vv[PVR_MAX_POLY_VERTS];
+	uint32_t	col[PVR_MAX_POLY_VERTS];
+	float		*base = p->verts[0];
+	int		n = p->numverts, i;
+
+	if (n > PVR_MAX_POLY_VERTS)
+		n = PVR_MAX_POLY_VERTS;
+	for (i = 0; i < n; i++)
+	{
+		float *v = base + i * VERTEXSIZE;
+		uu[i]  = v[3];
+		vv[i]  = v[4];
+		col[i] = PVR_LightVertex (surf, v);
+	}
+	PVR_EmitPoly (p, uu, vv, col);
+}
+
 /*
 ==============
 PVR_DrawWorld -- submit the world's opaque texture chains to the PVR OP list
@@ -182,7 +198,7 @@ void PVR_DrawWorld (qmodel_t *model)
 			if (s->flags & SURF_SKIP_MASK)
 				continue;
 			if (s->polys)
-				PVR_SubmitPoly (s->polys, s);
+				PVR_SubmitLitPoly (s->polys, s);
 		}
 	}
 }

@@ -120,7 +120,7 @@ PVR_OBJS =
 ifeq ($(USE_PVR_RENDER),1)
 CFLAGS  += -DUSE_PVR_RENDER
 PVR_OBJS = pvr_backend.o pvr_rmath.o pvr_alloc.o pvr_image.o pvr_context.o pvr_clip.o \
-           pvr_rmain.o pvr_rsurf.o
+           pvr_rmain.o pvr_rsurf.o pvr_warp.o
 # Swap the SDL/GLdc video driver for the native PVR one, and the GL texture
 # manager for the PVR-native one (uploads to VRAM, no glTexImage2D). (The gl_
 # render modules are swapped for pvr_ ones in later steps; until then the binary
