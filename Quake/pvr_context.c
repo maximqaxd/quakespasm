@@ -134,8 +134,10 @@ void PVR_FlushState (void)
 
 	// Depth: PVR depth is 1/w (nearer == larger), so compare GEQUAL. Write depth in
 	// the opaque/punch-through lists; translucent overlays test but don't write.
+	// NOTE: depth.write is INVERTED in KOS -- PVR_DEPTHWRITE_ENABLE == 0. Using a
+	// plain bool here disabled Z writes for the opaque world (see-through walls).
 	cxt.depth.comparison = PVR_DEPTHCMP_GEQUAL;
-	cxt.depth.write = (list != PVR_LIST_TR_POLY);
+	cxt.depth.write = (list == PVR_LIST_TR_POLY) ? PVR_DEPTHWRITE_DISABLE : PVR_DEPTHWRITE_ENABLE;
 
 	// Winding is not yet normalized between Quake and the PVR; leave culling off
 	// until the surface/model submit paths settle their vertex order.

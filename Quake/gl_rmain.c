@@ -501,6 +501,13 @@ void R_SetupGL (void)
 {
 	int scale;
 
+	scale = CLAMP(1, (int)r_scale.value, 4); // ericw -- see R_ScaleView
+#if defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER)
+	// PVR: build proj*modelview into the XMTRX bank + set the viewport (pvr_rmain).
+	PVR_SetupGLMatrices (scale);
+	return;
+#endif
+
 	//johnfitz -- rewrote this section
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity ();
@@ -545,6 +552,9 @@ R_Clear -- johnfitz -- rewritten and gutted
 */
 void R_Clear (void)
 {
+#if defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER)
+	return;		// PVR clears the framebuffer via the scene background color
+#else
 	unsigned int clearbits;
 
 	clearbits = GL_DEPTH_BUFFER_BIT;
@@ -554,6 +564,7 @@ void R_Clear (void)
 	if (gl_clear.value)
 		clearbits |= GL_COLOR_BUFFER_BIT;
 	glClear (clearbits);
+#endif
 }
 
 /*
@@ -610,7 +621,9 @@ void R_SetupView (void)
 
 	R_MarkSurfaces (); //johnfitz -- create texture chains from PVS
 
+#if !(defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER))
 	R_UpdateWarpTextures (); //johnfitz -- do this before R_Clear
+#endif
 
 	R_Clear ();
 
@@ -934,6 +947,14 @@ R_RenderScene
 void R_RenderScene (void)
 {
 	R_SetupScene (); //johnfitz -- this does everything that should be done once per call to RenderScene
+
+#if defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER)
+	// PVR world pass only for now (sky/shadows/entities/water/particles/viewmodel
+	// still submit through GLdc, which isn't initialized on this path). These come
+	// online as their pvr_ modules land.
+	R_DrawWorld ();
+	return;
+#endif
 
 	Fog_EnableGFog (); //johnfitz
 

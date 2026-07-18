@@ -90,6 +90,12 @@ void	PVR_DrawTestTriangle (void);		// pipeline smoke test (step 1)
 // 2D (pvr_draw.c): flush the pending 2D batch into the TA. Called at end of frame.
 void	PVR_Flush2D (void);
 
+// World render (pvr_rmain.c / pvr_rsurf.c). PVR_SetupGLMatrices builds proj*modelview
+// from r_refdef and loads the XMTRX + viewport (called from R_SetupGL under PVR);
+// PVR_DrawWorld submits the opaque world texture chains to the OP list.
+void	PVR_SetupGLMatrices (int scale);
+void	PVR_DrawWorld (qmodel_t *model);
+
 extern int	pvr_frame_list;			// currently open list, -1 if none
 
 //==============================================================================
@@ -168,9 +174,17 @@ void	PVR_FlushState (void);			// compile+submit header if dirty
 //==============================================================================
 // clipping  (pvr_clip.c)
 //==============================================================================
-// Clip a convex polygon against the near plane before perspective divide,
-// emitting the (possibly re-tessellated) verts to the current list.
-int	PVR_ClipPolygon (const float *verts, int numverts, int stride);
+// Our projection (shz_xmtrx_apply_perspective) yields clip.w = -z_eye (distance)
+// and clip.z = near, so a vertex is in front of the near plane when w >= z. Verts
+// failing this must never be submitted raw (w<=0 -> 1/w explodes -> TA hang/reboot).
+#define PVR_NEAR_CLIP_EPSILON	1e-4f
+
+// Clip one triangle (clip-space verts + per-vertex uv/color) against the near
+// plane and submit the resulting 1 or 2 triangles to the current list via the
+// store queues. No-op if the whole triangle is behind the near plane.
+void	PVR_ClipAndSubmitTriangle (shz_vec4_t p0, shz_vec4_t p1, shz_vec4_t p2,
+				   float u0, float v0, float u1, float v1, float u2, float v2,
+				   uint32_t c0, uint32_t c1, uint32_t c2);
 
 #endif	/* PLATFORM_DREAMCAST && USE_PVR_RENDER */
 #endif	/* PVR_LOCAL_H */

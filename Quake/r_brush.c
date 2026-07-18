@@ -284,6 +284,13 @@ called during rendering
 */
 void R_RenderDynamicLightmaps (msurface_t *fa)
 {
+#if defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER)
+	// The native PVR renderer lights the world per-vertex (pvr_rsurf.c) and never
+	// samples the lightmap atlas, so there's nothing to bake or upload here --
+	// and calling glTexSubImage2D on the uninitialized GLdc would just spam.
+	(void)fa;
+	return;
+#else
 #if !defined(PLATFORM_DREAMCAST)
 	byte		*base;
 	int			maps;
@@ -367,6 +374,7 @@ dynamic:
 		}
 	}
 #endif	/* !PLATFORM_DREAMCAST */
+#endif	/* !(PLATFORM_DREAMCAST && USE_PVR_RENDER) */
 }
 
 /*
@@ -1073,6 +1081,11 @@ void R_UploadLightmaps (void)
 {
 	int lmap;
 
+#if defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER)
+	(void)lmap;
+	return;		// PVR lights per-vertex; the lightmap atlas is never sampled
+#endif
+
 	for (lmap = 0; lmap < lightmap_count; lmap++)
 	{
 		if (!lightmaps[lmap].modified)
@@ -1090,6 +1103,9 @@ R_RebuildAllLightmaps -- johnfitz -- called when gl_overbright gets toggled
 */
 void R_RebuildAllLightmaps (void)
 {
+#if defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER)
+	return;		// PVR lights per-vertex; no lightmap atlas to rebuild/upload
+#else
 	const int wide10bits = !!r_lightmapwide.value;
 	GLenum type = wide10bits ?
 	    GL_UNSIGNED_INT_10_10_10_2 : GL_UNSIGNED_BYTE;
@@ -1133,4 +1149,5 @@ void R_RebuildAllLightmaps (void)
 		glTexSubImage2D (GL_TEXTURE_2D, 0, 0, 0, LMBLOCK_WIDTH, LMBLOCK_HEIGHT, format,
 				 type, lightmaps[i].data);
 	}
+#endif	/* !(PLATFORM_DREAMCAST && USE_PVR_RENDER) */
 }

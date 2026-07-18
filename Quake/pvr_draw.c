@@ -185,8 +185,9 @@ static void Batch_Flush (void)
 	cxt.blend.src = PVR_MapBlend2D (batch_bsrc);
 	cxt.blend.dst = PVR_MapBlend2D (batch_bdst);
 	// 2D always draws over the scene: pass depth unconditionally, never write it.
+	// (KOS depth.write is inverted: DISABLE == 1.)
 	cxt.depth.comparison = PVR_DEPTHCMP_ALWAYS;
-	cxt.depth.write = false;
+	cxt.depth.write = PVR_DEPTHWRITE_DISABLE;
 
 	hdr = (pvr_poly_hdr_t *) pvr_dr_target (NULL);
 	pvr_poly_compile (hdr, &cxt);

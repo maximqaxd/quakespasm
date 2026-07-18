@@ -26,8 +26,8 @@ static float	pvr_clear[3] = { 0.0f, 0.0f, 0.0f };
 static pvr_init_params_t pvr_params =
 {
 	/* opb_sizes: OP, OP-mod, TR, TR-mod, PT */
-	{ PVR_BINSIZE_8, PVR_BINSIZE_0, PVR_BINSIZE_8, PVR_BINSIZE_0, PVR_BINSIZE_8 },
-	3072 * 256,	/* vertex_buf_size = 768KB (VRAM) */
+	{ PVR_BINSIZE_16, PVR_BINSIZE_0, PVR_BINSIZE_8, PVR_BINSIZE_0, PVR_BINSIZE_8 },
+	4096 * 256,	/* vertex_buf_size = 1MB (VRAM) -- headroom for dense world scenes */
 	0,		/* dma_enabled */
 	0,		/* fsaa_enabled */
 	0,		/* autosort_disabled (0 = PVR autosorts translucents) */
@@ -79,7 +79,6 @@ void PVR_DrawTestTriangle (void)
 {
 	pvr_poly_cxt_t	cxt;
 	pvr_poly_hdr_t	hdr;
-	pvr_dr_state_t	dr;
 	pvr_vertex_t	*vp;
 
 	PVR_ListBegin (PVR_LIST_OP_POLY);
@@ -88,17 +87,15 @@ void PVR_DrawTestTriangle (void)
 	pvr_poly_compile (&hdr, &cxt);
 	pvr_prim (&hdr, sizeof(hdr));
 
-	pvr_dr_init (&dr);
-
-	vp = pvr_dr_target (dr);
+	vp = pvr_dr_target (NULL);
 	vp->flags = PVR_CMD_VERTEX;      vp->x = 320; vp->y =  80; vp->z = 1.0f;
 	vp->argb  = 0xffff0000;          pvr_dr_commit (vp);
 
-	vp = pvr_dr_target (dr);
+	vp = pvr_dr_target (NULL);
 	vp->flags = PVR_CMD_VERTEX;      vp->x = 560; vp->y = 400; vp->z = 1.0f;
 	vp->argb  = 0xff00ff00;          pvr_dr_commit (vp);
 
-	vp = pvr_dr_target (dr);
+	vp = pvr_dr_target (NULL);
 	vp->flags = PVR_CMD_VERTEX_EOL;  vp->x =  80; vp->y = 400; vp->z = 1.0f;
 	vp->argb  = 0xff0000ff;          pvr_dr_commit (vp);
 }

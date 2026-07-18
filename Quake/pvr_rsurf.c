@@ -1,0 +1,190 @@
+/*
+================================================================================
+pvr_rsurf.c -- world/brush surface submission for the native PVR renderer (maximqad)
+
+The agnostic half of the world pass stays in r_world.c / r_brush.c: R_MarkSurfaces
+walks the PVS and builds per-texture surface chains, BuildSurfaceDisplayList bakes
+each surface's glpoly_t (world-space xyz + texture s/t + lightmap s/t), and
+R_TextureAnimation picks the animated frame. This module just consumes that: for
+each texture chain it binds the texture and fires every surface's polygon into the
+PVR opaque list.
+
+Each glpoly_t is a convex fan (GL_POLYGON). Vertices are transformed by the MVP in
+the XMTRX bank (one ftrv each) to clip space, near-plane clipped (pvr_clip -- verts
+behind the eye would divide by w<=0 and hang the TA), then emitted as fan triangles
+straight into the TA through the store queues. The poly header comes from the shared
+context cache (pvr_context): opaque list, MODULATE, depth GEQUAL/write, so it slots
+in before the 2D punch-through pass.
+
+Fill status: STEP 5. Opaque textured world, lit per-vertex from the static
+lightmap (PVR_LightVertex, single MODULATE pass -- no second geometry pass).
+Lightstyle animation works via d_lightstylevalue; dynamic lights, sky, water,
+alpha surfaces and brush-model entities are still TODO.
+================================================================================
+*/
+#include "pvr_local.h"
+
+#if defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER)
+
+// SURF_ flags for surfaces we skip in the opaque pass (sky + warped water)
+#define SURF_SKIP_MASK	(SURF_DRAWSKY | SURF_DRAWTURB)
+
+#define MAX_POLY_VERTS	64	// bound the per-poly clip-space scratch
+
+extern int	d_lightstylevalue[256];	// 8.8 lightstyle intensities (gl_rmain.c)
+
+/*
+==============
+PVR_LightVertex -- per-vertex Gouraud light from the static lightmap
+
+Single-pass lighting: instead of a second modulate pass with the lightmap atlas
+(which fights the PVR list order), we sample the BSP lightmap nearest the vertex
+and hand the result as the vertex color -- the OP header's MODULATE env then does
+texture * light. Mirrors R_BuildLightMap's DC path (grayscale, 1 byte/luxel,
+accumulate styles * d_lightstylevalue, >>7). Lightstyle animation (flicker/pulse)
+falls out for free via d_lightstylevalue. Dynamic lights are TODO.
+==============
+*/
+static uint32_t PVR_LightVertex (msurface_t *surf, const float *v)
+{
+	mtexinfo_t	*tex;
+	int		smax, tmax, size, ls, lt, maps, val;
+	float		s, t;
+	unsigned	acc = 0;
+
+	if (!surf || !surf->samples || !cl.worldmodel->lightdata)
+		return 0xffffffffu;		// unlit -> fullbright
+
+	tex  = surf->texinfo;
+	smax = (surf->extents[0] >> 4) + 1;
+	tmax = (surf->extents[1] >> 4) + 1;
+	size = smax * tmax;
+
+	s = DotProduct (v, tex->vecs[0]) + tex->vecs[0][3] - surf->texturemins[0];
+	t = DotProduct (v, tex->vecs[1]) + tex->vecs[1][3] - surf->texturemins[1];
+	ls = (int)(s * (1.0f / 16.0f)); if (ls < 0) ls = 0; if (ls >= smax) ls = smax - 1;
+	lt = (int)(t * (1.0f / 16.0f)); if (lt < 0) lt = 0; if (lt >= tmax) lt = tmax - 1;
+
+	for (maps = 0; maps < MAXLIGHTMAPS && surf->styles[maps] != 255; maps++)
+		acc += (unsigned)surf->samples[maps * size + lt * smax + ls] * (unsigned)d_lightstylevalue[surf->styles[maps]];
+
+	val = (int)(acc >> 7);			// single-pass MODULATE: map to [0,255]
+	if (val > 255) val = 255;
+
+	return 0xff000000u | ((unsigned)val << 16) | ((unsigned)val << 8) | (unsigned)val;
+}
+
+//------------------------------------------------------------------------------
+// Emit one surface polygon (a convex fan) with near-plane clipping
+//
+// Transform each vertex to clip space against the XMTRX MVP, flag which are in
+// front of the near plane (w >= z), then: skip if none visible; fast-path the
+// common all-visible case as fan triangles; otherwise clip each triangle.
+//------------------------------------------------------------------------------
+static void PVR_SubmitPoly (glpoly_t *p, msurface_t *surf)
+{
+	shz_vec4_t	clip[MAX_POLY_VERTS];
+	float		uu[MAX_POLY_VERTS], vv[MAX_POLY_VERTS];
+	uint32_t	col[MAX_POLY_VERTS];
+	int		n = p->numverts;
+	float		*base = p->verts[0];
+	unsigned	vismask = 0, allvis;
+	int		i;
+
+	if (n < 3)
+		return;
+	if (n > MAX_POLY_VERTS)
+		n = MAX_POLY_VERTS;
+
+	for (i = 0; i < n; i++)
+	{
+		float *v = base + i * VERTEXSIZE;
+		clip[i] = shz_xmtrx_transform_vec4 (shz_vec4_init (v[0], v[1], v[2], 1.0f));
+		uu[i] = v[3];
+		vv[i] = v[4];
+		col[i] = PVR_LightVertex (surf, v);
+		if (clip[i].w >= clip[i].z + PVR_NEAR_CLIP_EPSILON)
+			vismask |= (1u << i);
+	}
+
+	if (vismask == 0)
+		return;				// whole poly behind the near plane
+
+	allvis = (1u << n) - 1;
+	if (vismask == allvis)
+	{
+		// fast path: one triangle STRIP for the whole convex fan (n verts, not
+		// 3*(n-2) separate-triangle verts) -- 3x less TA traffic, which is what
+		// keeps heavy maps from overflowing the tile bins and dropping surfaces.
+		// zig-zag strip order over the fan: 0, 1, n-1, 2, n-2, 3, ...
+		int lo = 2, hi = n - 1, emitted = 0;
+
+		#define EMITV(idx) do {                                                  \
+			float iw = 1.0f / clip[idx].w;                                   \
+			pvr_vertex_t *vp = (pvr_vertex_t *) pvr_dr_target (NULL);         \
+			vp->flags = (++emitted == n) ? PVR_CMD_VERTEX_EOL : PVR_CMD_VERTEX;\
+			vp->x = clip[idx].x * iw; vp->y = clip[idx].y * iw; vp->z = iw;   \
+			vp->u = uu[idx]; vp->v = vv[idx]; vp->argb = col[idx]; vp->oargb = 0;\
+			pvr_dr_commit (vp);                                              \
+		} while (0)
+
+		EMITV (0);
+		EMITV (1);
+		while (lo <= hi)
+		{
+			EMITV (hi); hi--;
+			if (lo <= hi) { EMITV (lo); lo++; }
+		}
+		#undef EMITV
+	}
+	else
+	{
+		// slow path: clip each fan triangle against the near plane
+		for (i = 1; i < n - 1; i++)
+			PVR_ClipAndSubmitTriangle (clip[0], clip[i], clip[i+1],
+						   uu[0], vv[0], uu[i], vv[i], uu[i+1], vv[i+1],
+						   col[0], col[i], col[i+1]);
+	}
+}
+
+/*
+==============
+PVR_DrawWorld -- submit the world's opaque texture chains to the PVR OP list
+
+Called from r_world.c R_DrawWorld under USE_PVR_RENDER. Mirrors
+R_DrawTextureChains_TextureOnly but emits through the PVR instead of glBegin.
+==============
+*/
+void PVR_DrawWorld (qmodel_t *model)
+{
+	int		i;
+	texture_t	*t, *ta;
+	msurface_t	*s;
+
+	PVR_ListBegin (PVR_LIST_OP_POLY);
+	PVR_SetBlend (GL_ONE, GL_ZERO);		// opaque
+	PVR_SetTexEnv (GL_MODULATE);		// texture * vertex color (white for now)
+
+	for (i = 0; i < model->numtextures; i++)
+	{
+		t = model->textures[i];
+		if (!t || !t->texturechains[chain_world])
+			continue;
+		if (t->texturechains[chain_world]->flags & SURF_SKIP_MASK)
+			continue;			// sky / water chains handled elsewhere
+
+		ta = R_TextureAnimation (t, 0);		// world ent -> frame 0
+		GL_Bind (ta->gltexture);		// records the bound texture for the header
+		PVR_FlushState ();			// compile + submit the OP poly header if changed
+
+		for (s = t->texturechains[chain_world]; s; s = s->texturechain)
+		{
+			if (s->flags & SURF_SKIP_MASK)
+				continue;
+			if (s->polys)
+				PVR_SubmitPoly (s->polys, s);
+		}
+	}
+}
+
+#endif	/* PLATFORM_DREAMCAST && USE_PVR_RENDER */
