@@ -546,16 +546,25 @@ and generates key repeats if the button is held down.
 Adapted from DarkPlaces by lordhavoc
 ================
 */
+// Only navigation keys auto-repeat. Repeating action buttons (A/B/X/Y, start,
+// shoulders) causes double-selects when a menu opens or closes while the button
+// is still held -- e.g. holding A to pick "Load" would then load slot 0.
+static qboolean IN_KeyCanRepeat(int key)
+{
+	return key == K_UPARROW || key == K_DOWNARROW
+	    || key == K_LEFTARROW || key == K_RIGHTARROW;
+}
+
 static void IN_JoyKeyEvent(qboolean wasdown, qboolean isdown, int key, double *timer)
 {
 	// we can't use `realtime` for key repeats because it is not monotomic
 	const double currenttime = Sys_DoubleTime();
-	
+
 	if (wasdown)
 	{
 		if (isdown)
 		{
-			if (currenttime >= *timer)
+			if (currenttime >= *timer && IN_KeyCanRepeat(key))
 			{
 				*timer = currenttime + 0.1;
 				Key_Event(key, true);
@@ -849,7 +858,7 @@ static inline int IN_SDL_KeysymToQuakeKey(SDLKey sym)
 	case SDLK_BREAK: return K_PAUSE;
 	case SDLK_PAUSE: return K_PAUSE;
 
-	case SDLK_WORLD_18: return '~'; // the '²' key
+	case SDLK_WORLD_18: return '~'; // the 'ï¿½' key
 
 	default: return 0;
 	}
