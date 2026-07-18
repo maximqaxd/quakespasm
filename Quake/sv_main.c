@@ -1518,7 +1518,16 @@ void SV_SpawnServer (const char *server)
 // allocate server memory
 	/* Host_ClearMemory() called above already cleared the whole sv structure */
 	sv.max_edicts = CLAMP (MIN_EDICTS,(int)max_edicts.value,MAX_EDICTS); //johnfitz -- max_edicts cvar
+#if defined(PLATFORM_DREAMCAST)
+	// DC: allocate edicts on the HUNK, not the malloc pool. The pool is shared with
+	// GLdc's ever-growing OP/PT/TR list vectors and is what OOMs; this ~0.9MB is
+	// better spent inside the fixed hunk block (freed by Hunk_FreeToLowMark in
+	// Host_ClearMemory, so the free() there is skipped on DC). DC's max_edicts is
+	// small (600) so the hunk cost is modest -- unlike desktop's 8192.
+	sv.edicts = (edict_t *) Hunk_AllocName (sv.max_edicts*pr_edict_size, "edicts");
+#else
 	sv.edicts = (edict_t *) malloc (sv.max_edicts*pr_edict_size); // ericw -- sv.edicts switched to use malloc()
+#endif
 
 	sv.datagram.maxsize = sizeof(sv.datagram_buf);
 	sv.datagram.cursize = 0;

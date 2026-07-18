@@ -63,9 +63,11 @@ cvar_t	host_maxfps = {"host_maxfps", "72", CVAR_ARCHIVE}; //johnfitz
 cvar_t	host_timescale = {"host_timescale", "0", CVAR_NONE}; //johnfitz
 #if defined(PLATFORM_DREAMCAST)
 /* Dreamcast: was 8192. Drives cl_entities (240B each, permanent hunk) AND the
-   malloc'd sv.edicts (competes with GLdc's reserve). 8192 wastes ~1.9MB hunk +
-   ~1.6MB reserve; id1 maps use <600 edicts, so 1024 is safe and frees ~3MB. */
-cvar_t	max_edicts = {"max_edicts", "1024", CVAR_NONE};
+   malloc'd sv.edicts (~pr_edict_size each, ~1.5KB) which lives in the main-RAM
+   malloc POOL alongside GLdc's list vectors -- the thing that OOMs. 600 (the
+   standard id1 ceiling) trims sv.edicts to ~0.9MB and cl_entities hunk too vs
+   the old 1024, freeing ~0.6MB pool while still covering every id1 map. */
+cvar_t	max_edicts = {"max_edicts", "600", CVAR_NONE};
 #else
 cvar_t	max_edicts = {"max_edicts", "8192", CVAR_NONE}; //johnfitz //ericw -- changed from 2048 to 8192, removed CVAR_ARCHIVE
 #endif
@@ -233,8 +235,16 @@ void	Host_FindMaxClients (void)
 		svs.maxclients = MAX_SCOREBOARD;
 
 	svs.maxclientslimit = svs.maxclients;
+#if defined(PLATFORM_DREAMCAST)
+	// DC: floor at 2 (not 4) -- client_t is ~64KB each, so this saves ~128KB of
+	// hunk in single-player while still allowing 2-player coop from an SP session
+	// without reallocating svs.clients.
+	if (svs.maxclientslimit < 2)
+		svs.maxclientslimit = 2;
+#else
 	if (svs.maxclientslimit < 4)
 		svs.maxclientslimit = 4;
+#endif
 	svs.clients = (struct client_s *) Hunk_AllocName (svs.maxclientslimit*sizeof(client_t), "clients");
 
 	if (svs.maxclients > 1)
@@ -565,7 +575,9 @@ void Host_ClearMemory (void)
 /* host_hunklevel MUST be set at this point */
 	Hunk_FreeToLowMark (host_hunklevel);
 	cls.signon = 0; // not CL_ClearSignons()
+#if !defined(PLATFORM_DREAMCAST)
 	free(sv.edicts); // ericw -- sv.edicts switched to use malloc()
+#endif	// DC: sv.edicts is on the hunk, already freed by Hunk_FreeToLowMark above
 	memset (&sv, 0, sizeof(sv));
 	memset (&cl, 0, sizeof(cl));
 }

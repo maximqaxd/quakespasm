@@ -65,13 +65,9 @@ static void DC_InitThreadStack (void)
 
 static int DC_HeapSize (void)
 {
-	const size_t reserve = 3 * 1024 * 1024;	/* 3MB (particle cap freed hunk to afford this) */
+	const size_t reserve = 3 * 1024 * 1024;
 	const size_t floor   = MINIMUM_MEMORY_LEVELPAK;	/* never return less than Quake requires */
-	const size_t ceiling = 7 * 1024 * 1024;	/* cap the hunk so GLdc's per-frame vertex
-						   buffer has room. The console (1MB->128KB) and
-						   grayscale-lightdata savings dropped permanent hunk
-						   use enough that 7MB now fits map+cache and hands
-						   GLdc ~1MB more (fixes the sbrk OOM in-game). */
+	const size_t ceiling = 9 * 1024 * 1024;
 	uintptr_t brk = (uintptr_t) sbrk (0);
 	size_t avail;
 
@@ -134,6 +130,7 @@ int main(int argc, char *argv[])
 #if defined(PLATFORM_DREAMCAST)
 	DC_InitThreadStack ();
 	SDL_SetHint ("SDL_DC_VIDEO_MODE", "SDL_DC_OPENGL_VIDEO");
+	SDL_SetHint ("SDL_VIDEO_DOUBLE_BUFFER", "1");
 #endif
 
 	host_parms = &parms;
