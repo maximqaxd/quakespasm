@@ -165,13 +165,15 @@ static void PVR_SubmitLitPoly (glpoly_t *p, msurface_t *surf)
 
 /*
 ==============
-PVR_DrawWorld -- submit the world's opaque texture chains to the PVR OP list
+PVR_DrawChains -- submit a model's opaque solid texture chains to the PVR OP list
 
-Called from r_world.c R_DrawWorld under USE_PVR_RENDER. Mirrors
-R_DrawTextureChains_TextureOnly but emits through the PVR instead of glBegin.
+Shared by the world (chain_world) and brush-model entities (chain_model). For
+entities the caller has already post-multiplied the object transform into XMTRX,
+so the model-local verts map correctly. Mirrors R_DrawTextureChains_TextureOnly
+but emits through the PVR instead of glBegin.
 ==============
 */
-void PVR_DrawWorld (qmodel_t *model)
+static void PVR_DrawChains (qmodel_t *model, texchain_t chain)
 {
 	int		i;
 	texture_t	*t, *ta;
@@ -179,7 +181,55 @@ void PVR_DrawWorld (qmodel_t *model)
 
 	PVR_ListBegin (PVR_LIST_OP_POLY);
 	PVR_SetBlend (GL_ONE, GL_ZERO);		// opaque
-	PVR_SetTexEnv (GL_MODULATE);		// texture * vertex color (white for now)
+	PVR_SetTexEnv (GL_MODULATE);		// texture * per-vertex light
+
+	for (i = 0; i < model->numtextures; i++)
+	{
+		t = model->textures[i];
+		if (!t || !t->texturechains[chain])
+			continue;
+		if (t->texturechains[chain]->flags & SURF_SKIP_MASK)
+			continue;			// sky / water chains handled elsewhere
+
+		ta = R_TextureAnimation (t, 0);
+		if (ta->gltexture && (ta->gltexture->flags & TEXPREF_ALPHA))
+			continue;			// fence ('{') textures -> punch-through pass
+		GL_Bind (ta->gltexture);		// records the bound texture for the header
+		PVR_FlushState ();			// compile + submit the OP poly header if changed
+
+		for (s = t->texturechains[chain]; s; s = s->texturechain)
+		{
+			if (s->flags & SURF_SKIP_MASK)
+				continue;
+			if (s->polys)
+				PVR_SubmitLitPoly (s->polys, s);
+		}
+	}
+}
+
+void PVR_DrawWorld (qmodel_t *model)
+{
+	PVR_DrawChains (model, chain_world);
+}
+
+/*
+==============
+PVR_DrawWorld_Fence -- alpha-tested ('{') world surfaces into the punch-through list
+
+Fence/grate textures load with TEXPREF_ALPHA (palette index 255 -> alpha 0). The
+PT list alpha-tests those texels away. PT renders last (with the 2D HUD), so this
+runs after the OP solid world and TR translucent water.
+==============
+*/
+void PVR_DrawWorld_Fence (qmodel_t *model)
+{
+	int		i;
+	texture_t	*t, *ta;
+	msurface_t	*s;
+
+	PVR_ListBegin (PVR_LIST_PT_POLY);
+	PVR_SetBlend (GL_ONE, GL_ZERO);		// no blend; the PT list does the alpha test
+	PVR_SetTexEnv (GL_MODULATE);		// lit
 
 	for (i = 0; i < model->numtextures; i++)
 	{
@@ -187,11 +237,14 @@ void PVR_DrawWorld (qmodel_t *model)
 		if (!t || !t->texturechains[chain_world])
 			continue;
 		if (t->texturechains[chain_world]->flags & SURF_SKIP_MASK)
-			continue;			// sky / water chains handled elsewhere
+			continue;
 
-		ta = R_TextureAnimation (t, 0);		// world ent -> frame 0
-		GL_Bind (ta->gltexture);		// records the bound texture for the header
-		PVR_FlushState ();			// compile + submit the OP poly header if changed
+		ta = R_TextureAnimation (t, 0);
+		if (!ta->gltexture || !(ta->gltexture->flags & TEXPREF_ALPHA))
+			continue;			// only fence textures here
+
+		GL_Bind (ta->gltexture);
+		PVR_FlushState ();
 
 		for (s = t->texturechains[chain_world]; s; s = s->texturechain)
 		{
@@ -201,6 +254,13 @@ void PVR_DrawWorld (qmodel_t *model)
 				PVR_SubmitLitPoly (s->polys, s);
 		}
 	}
+}
+
+// Brush-model entity solid surfaces (door/plat/button); XMTRX already holds the
+// entity's world*object MVP (PVR_SetupEntityMatrices).
+void PVR_DrawBrushModel (qmodel_t *model)
+{
+	PVR_DrawChains (model, chain_model);
 }
 
 #endif	/* PLATFORM_DREAMCAST && USE_PVR_RENDER */

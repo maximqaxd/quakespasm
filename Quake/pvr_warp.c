@@ -32,38 +32,65 @@ static const float	turbsin[] =
 
 /*
 ==============
-PVR_DrawWorld_Water -- submit the world's liquid (SURF_DRAWTURB) chains
+PVR_DrawWaterChains -- submit a model's liquid (SURF_DRAWTURB) chains, warped
 
-Called from r_world.c R_DrawWorld_Water under USE_PVR_RENDER. Opaque + fullbright
-for now, in the OP list right after the solid world.
+Two passes selected by `translucent`:
+  false: opaque liquid (alpha >= 1) in the OP list, fullbright.
+  true:  translucent liquid (alpha < 1) in the TR list -- MODULATEALPHA env +
+         SRC_ALPHA/INV_SRC_ALPHA blend, per-surface alpha (GL_WaterAlphaForSurface)
+         in the vertex color so you can see through it.
+Per-surface alpha routes each face to its matching pass. For entities XMTRX
+already holds the object transform.
 ==============
 */
-void PVR_DrawWorld_Water (qmodel_t *model)
+static void PVR_DrawWaterChains (qmodel_t *model, texchain_t chain, qboolean translucent)
 {
 	int		i, j, n;
 	texture_t	*t;
 	msurface_t	*s;
 	glpoly_t	*p;
 
-	PVR_ListBegin (PVR_LIST_OP_POLY);
-	PVR_SetBlend (GL_ONE, GL_ZERO);		// opaque
-	PVR_SetTexEnv (GL_MODULATE);		// fullbright (white vertex color)
+	if (translucent)
+	{
+		PVR_ListBegin (PVR_LIST_TR_POLY);
+		PVR_SetBlend (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		PVR_SetTexEnv (PVR_TEXENV_MODULATEALPHA);	// vertex alpha controls see-through
+	}
+	else
+	{
+		PVR_ListBegin (PVR_LIST_OP_POLY);
+		PVR_SetBlend (GL_ONE, GL_ZERO);
+		PVR_SetTexEnv (GL_MODULATE);			// fullbright
+	}
 
 	for (i = 0; i < model->numtextures; i++)
 	{
 		t = model->textures[i];
-		if (!t || !t->texturechains[chain_world])
+		if (!t || !t->texturechains[chain])
 			continue;
-		if (!(t->texturechains[chain_world]->flags & SURF_DRAWTURB))
+		if (!(t->texturechains[chain]->flags & SURF_DRAWTURB))
 			continue;
 
 		GL_Bind (t->gltexture);
 		PVR_FlushState ();
 
-		for (s = t->texturechains[chain_world]; s; s = s->texturechain)
+		for (s = t->texturechains[chain]; s; s = s->texturechain)
 		{
+			float		a;
+			uint32_t	argb;
+
 			if (!(s->flags & SURF_DRAWTURB) || !s->polys)
 				continue;
+
+			a = GL_WaterAlphaForSurface (s);
+			if ((a < 1.0f) != translucent)
+				continue;			// belongs to the other pass
+
+			{
+				uint32_t alpha8 = (uint32_t)(a * 255.0f);
+				if (alpha8 > 255) alpha8 = 255;
+				argb = (alpha8 << 24) | 0x00ffffffu;
+			}
 
 			// s->polys is the whole face; the subdivided pieces are the ->next chain
 			for (p = s->polys->next; p; p = p->next)
@@ -80,12 +107,26 @@ void PVR_DrawWorld_Water (qmodel_t *model)
 					float *v = base + j * VERTEXSIZE;
 					uu[j]  = WARPCALC2 (v[3], v[4]);
 					vv[j]  = WARPCALC2 (v[4], v[3]);
-					col[j] = 0xffffffffu;	// fullbright liquid
+					col[j] = argb;
 				}
 				PVR_EmitPoly (p, uu, vv, col);
 			}
 		}
 	}
+}
+
+// Called from r_world.c R_DrawWorld_Water under USE_PVR_RENDER: opaque liquid in
+// the OP list, then translucent liquid in the TR list (must follow all OP work).
+void PVR_DrawWorld_Water (qmodel_t *model)
+{
+	PVR_DrawWaterChains (model, chain_world, false);
+	PVR_DrawWaterChains (model, chain_world, true);
+}
+
+// Brush-model entity liquid (opaque only for now; XMTRX holds the entity transform).
+void PVR_DrawBrushModel_Water (qmodel_t *model)
+{
+	PVR_DrawWaterChains (model, chain_model, false);
 }
 
 #endif	/* PLATFORM_DREAMCAST && USE_PVR_RENDER */

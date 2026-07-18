@@ -177,8 +177,12 @@ extern struct gltexture_s *pvr_bound_texture;
 //   Maps (list, blend src/dst, texture, filter, env) -> a compiled pvr_poly_hdr.
 //   Submitting a header only when state actually changes keeps the DR stream tight.
 //==============================================================================
+// PVR_SetTexEnv takes GL_REPLACE / GL_MODULATE, plus this sentinel for the PVR's
+// MODULATEALPHA mode (multiplies texel alpha by the vertex alpha -- used by
+// translucent water so per-vertex alpha controls transparency).
+#define PVR_TEXENV_MODULATEALPHA	0x2A01
 void	PVR_SetBlend (int src, int dst);	// GL_ONE etc. -> PVR blend
-void	PVR_SetTexEnv (int env);		// GL_REPLACE / GL_MODULATE
+void	PVR_SetTexEnv (int env);		// GL_REPLACE / GL_MODULATE / PVR_TEXENV_MODULATEALPHA
 void	PVR_FlushState (void);			// compile+submit header if dirty
 
 //==============================================================================

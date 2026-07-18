@@ -677,14 +677,20 @@ void R_DrawEntitiesOnList (qboolean alphapass) //johnfitz -- added parameter
 
 		switch (currententity->model->type)
 		{
+#if !(defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER))
 			case mod_alias:
 				R_DrawAliasModel (currententity);
 				break;
+#endif
 			case mod_brush:
 				R_DrawBrushModel (currententity);
 				break;
+#if !(defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER))
 			case mod_sprite:
 				R_DrawSpriteModel (currententity);
+				break;
+#endif
+			default:
 				break;
 		}
 	}
@@ -949,11 +955,13 @@ void R_RenderScene (void)
 	R_SetupScene (); //johnfitz -- this does everything that should be done once per call to RenderScene
 
 #if defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER)
-	// PVR world + liquid passes for now (sky/shadows/entities/particles/viewmodel
-	// still submit through GLdc, which isn't initialized on this path). These come
-	// online as their pvr_ modules land.
-	R_DrawWorld ();
-	R_DrawWorld_Water ();
+	// Strict PVR list order OP -> TR -> PT (the TA renders them in that order, so PT
+	// is last and the 2D HUD on top). sky/shadows/alias/sprite/particles/viewmodel
+	// still submit through GLdc (uninitialized here) and are skipped for now.
+	R_DrawWorld ();                 // OP: solid world (fence + liquid excluded)
+	R_DrawEntitiesOnList (false);   // OP: brush-model entities (mod_brush only, below)
+	R_DrawWorld_Water ();           // OP opaque liquid, then TR translucent liquid
+	PVR_DrawWorld_Fence (cl.worldmodel); // PT: alpha-tested fence surfaces
 	return;
 #endif
 

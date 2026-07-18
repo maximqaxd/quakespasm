@@ -113,9 +113,14 @@ void PVR_FlushState (void)
 				  (pvr_ptr_t)tex->pvr_vram, filt);
 
 		// REPLACE shows the texel straight (2D pics at full brightness); MODULATE
-		// multiplies by vertex color for lit world/model geometry.
-		cxt.txr.env = (st_texenv == GL_REPLACE)
-			? PVR_TXRENV_REPLACE : PVR_TXRENV_MODULATE;
+		// multiplies RGB by vertex color (lit geometry) keeping texel alpha;
+		// MODULATEALPHA also multiplies alpha (translucent water: vertex alpha wins).
+		if (st_texenv == GL_REPLACE)
+			cxt.txr.env = PVR_TXRENV_REPLACE;
+		else if (st_texenv == PVR_TEXENV_MODULATEALPHA)
+			cxt.txr.env = PVR_TXRENV_MODULATEALPHA;
+		else
+			cxt.txr.env = PVR_TXRENV_MODULATE;
 		// In the opaque list texel/palette alpha is irrelevant; disable it so index
 		// 255 shows its color. Punch-through / translucent keep alpha for cutouts.
 		cxt.txr.alpha = (list == PVR_LIST_OP_POLY);

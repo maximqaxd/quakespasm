@@ -33,6 +33,9 @@ extern float r_fovx, r_fovy;
 
 #define DEG2RAD_F(d)	((d) * (float)M_PI / 180.0f)
 
+// world MVP (screen*persp*view), saved so brush-model entities can restore it
+static shz_mat4x4_t	pvr_world_mvp;
+
 /*
 ==============
 PVR_SetupGLMatrices -- replaces R_SetupGL's GL matrix/viewport calls under PVR
@@ -79,6 +82,37 @@ void PVR_SetupGLMatrices (int scale)
 
 	// move the world so the camera sits at the origin
 	shz_xmtrx_translate (-r_refdef.vieworg[0], -r_refdef.vieworg[1], -r_refdef.vieworg[2]);
+
+	// Save the world MVP so brush-model entities can restore it and post-multiply
+	// their own object transform (XMTRX is otherwise only read by the vertex ftrv).
+	shz_xmtrx_store_4x4 (&pvr_world_mvp);
+}
+
+/*
+==============
+PVR_SetupEntityMatrices -- world MVP * entity object transform, into XMTRX
+
+Mirrors R_RotateForEntity (glTranslate origin; rotate yaw/-pitch/roll; scale),
+post-multiplied onto the saved world MVP so a brush model's model-local verts map
+straight to the screen. Restore with PVR_RestoreWorldMatrix when done.
+==============
+*/
+void PVR_SetupEntityMatrices (vec3_t origin, vec3_t angles, unsigned char scale)
+{
+	float sf = ENTSCALE_DECODE (scale);
+
+	shz_xmtrx_load_4x4 (&pvr_world_mvp);
+	shz_xmtrx_translate (origin[0], origin[1], origin[2]);
+	shz_xmtrx_rotate_z (DEG2RAD_F ( angles[1]));
+	shz_xmtrx_rotate_y (DEG2RAD_F (-angles[0]));
+	shz_xmtrx_rotate_x (DEG2RAD_F ( angles[2]));
+	if (sf != 1.0f)
+		shz_xmtrx_scale (sf, sf, sf);
+}
+
+void PVR_RestoreWorldMatrix (void)
+{
+	shz_xmtrx_load_4x4 (&pvr_world_mvp);
 }
 
 #endif	/* PLATFORM_DREAMCAST && USE_PVR_RENDER */
