@@ -105,12 +105,16 @@ void PVR_FlushState (void)
 
 	if (tex && tex->pvr_vram)
 	{
-		pvr_filter_mode_t filt = (tex->flags & TEXPREF_NEAREST)
-			? PVR_FILTER_NEAREST : PVR_FILTER_BILINEAR;
+		// Mipmapped textures always sample bilinear (mipmap linear); pvr_vram is the
+		// twiddled mip-chain base and txr.mipmap tells the TA to pick the LOD.
+		pvr_filter_mode_t filt = tex->pvr_mipmap ? PVR_FILTER_BILINEAR
+			: ((tex->flags & TEXPREF_NEAREST) ? PVR_FILTER_NEAREST : PVR_FILTER_BILINEAR);
 
 		pvr_poly_cxt_txr (&cxt, list, (int)tex->pvr_fmt,
 				  (int)tex->width, (int)tex->height,
 				  (pvr_ptr_t)tex->pvr_vram, filt);
+
+		cxt.txr.mipmap = tex->pvr_mipmap ? true : false;
 
 		// REPLACE shows the texel straight (2D pics at full brightness); MODULATE
 		// multiplies RGB by vertex color (lit geometry) keeping texel alpha;

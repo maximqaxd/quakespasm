@@ -158,6 +158,8 @@ void	PVR_VramFree (void *ptr);
 void	PVR_UploadTextureIndexed (struct gltexture_s *glt, const void *indices, int w, int h, int palbank);
 void	PVR_UploadTexture (struct gltexture_s *glt, const void *rgba, int w, int h, unsigned flags);
 void	PVR_UploadTexture565 (struct gltexture_s *glt, const void *rgb565, int w, int h);
+//   - PVR_UploadTextureMipmap: square-POT RGBA source -> twiddled 565/4444 mip chain.
+void	PVR_UploadTextureMipmap (struct gltexture_s *glt, const void *rgba, int w, int h, unsigned flags);
 void	PVR_FreeTexture (struct gltexture_s *glt);
 void	PVR_BindTexture (struct gltexture_s *glt);	// records the bound texture for the context cache
 

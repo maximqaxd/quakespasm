@@ -108,6 +108,143 @@ static void PVR_StoreTexture (struct gltexture_s *glt, const uint16_t *pix,
 	pvr_txr_load (pix, (pvr_ptr_t)vram, size);
 	glt->pvr_vram = vram;
 	glt->pvr_fmt  = fmt;
+	glt->pvr_mipmap = 0;
+}
+
+//------------------------------------------------------------------------------
+// Square-POT mipmaps (twiddled). PVR hardware mipmaps require a square texture
+// whose levels sit at fixed byte offsets in a twiddled blob: level 0 = full NxN
+// at offset[N], smaller mips packed before it down to 1x1 at offset 6. We build
+// the whole chain in RAM -- box-downsampling in RGBA so mips are averaged, then
+// packing each level to 565/4444 and twiddling it -- and upload it in one load.
+// The header (pvr_context.c) sets txr.mipmap + BILINEAR when pvr_mipmap is set.
+//------------------------------------------------------------------------------
+
+// 16bpp mip-chain byte offset to the level of the given side length (GLdc table).
+static unsigned PVR_MipOffset16 (int size)
+{
+	switch (size)
+	{
+	case 1024: return 0xAAAB0;
+	case 512:  return 0x2AAB0;
+	case 256:  return 0x0AAB0;
+	case 128:  return 0x02AB0;
+	case 64:   return 0x00AB0;
+	case 32:   return 0x002B0;
+	case 16:   return 0x000B0;
+	case 8:    return 0x00030;
+	case 4:    return 0x00010;
+	case 2:    return 0x00008;
+	case 1:    return 0x00006;
+	default:   return 0;
+	}
+}
+
+// spread the low 16 bits so bit i lands at bit 2i (Morton part1by1)
+static inline unsigned PVR_TwidSpread (unsigned v)
+{
+	v &= 0x0000FFFFu;
+	v = (v ^ (v << 8)) & 0x00FF00FFu;
+	v = (v ^ (v << 4)) & 0x0F0F0F0Fu;
+	v = (v ^ (v << 2)) & 0x33333333u;
+	v = (v ^ (v << 1)) & 0x55555555u;
+	return v;
+}
+// PVR twiddled linear index for (x,y): y in even bits, x in odd bits
+static inline unsigned PVR_TwidIndex (unsigned x, unsigned y)
+{
+	return PVR_TwidSpread (y) | (PVR_TwidSpread (x) << 1);
+}
+
+// box-downsample a square RGBA image to half size
+static void PVR_HalveRGBA (const byte *src, byte *dst, int size)
+{
+	int	hs = size >> 1, x, y, c;
+
+	for (y = 0; y < hs; y++)
+	{
+		const byte *r0 = src + (size_t)(y * 2)     * size * 4;
+		const byte *r1 = src + (size_t)(y * 2 + 1) * size * 4;
+		byte	   *o  = dst + (size_t)y * hs * 4;
+		for (x = 0; x < hs; x++)
+		{
+			const byte *a = r0 + (x * 2) * 4, *b = r0 + (x * 2 + 1) * 4;
+			const byte *e = r1 + (x * 2) * 4, *f = r1 + (x * 2 + 1) * 4;
+			for (c = 0; c < 4; c++)
+				o[x * 4 + c] = (byte)((a[c] + b[c] + e[c] + f[c] + 2) >> 2);
+		}
+	}
+}
+
+void PVR_UploadTextureMipmap (struct gltexture_s *glt, const void *rgba, int w, int h, unsigned flags)
+{
+	int		N = w;			// square: w == h, power of two
+	qboolean	alpha = (flags & TEXPREF_ALPHA) != 0;
+	unsigned	chain_size = PVR_MipOffset16 (N) + (unsigned)N * N * 2;
+	unsigned	chain_pad = (chain_size + 31u) & ~31u;
+	byte		*chain, *lvl, *nxt;
+	int		size;
+	void		*vram;
+
+	chain = (byte *) calloc (1, chain_pad);
+	lvl   = (byte *) malloc ((size_t)N * N * 4);	// current level, RGBA
+	nxt   = (byte *) malloc ((size_t)N * N);	// next (quarter-area) level, RGBA
+	if (!chain || !lvl || !nxt)
+	{
+		Con_Printf ("PVR_UploadTextureMipmap: no RAM for %s (%dx%d)\n", glt->name, w, h);
+		free (chain); free (lvl); free (nxt);
+		return;
+	}
+
+	memcpy (lvl, rgba, (size_t)N * N * 4);
+
+	for (size = N; size >= 1; size >>= 1)
+	{
+		uint16_t	*dst = (uint16_t *)(chain + PVR_MipOffset16 (size));
+		int		x, y;
+
+		for (y = 0; y < size; y++)
+			for (x = 0; x < size; x++)
+			{
+				const byte *p = lvl + ((size_t)y * size + x) * 4;
+				uint16_t    px;
+				if (alpha)
+					px = (uint16_t)(((p[3] >> 4) << 12) | ((p[0] >> 4) << 8) | ((p[1] >> 4) << 4) | (p[2] >> 4));
+				else
+					px = (uint16_t)(((p[0] >> 3) << 11) | ((p[1] >> 2) << 5) | (p[2] >> 3));
+				dst[PVR_TwidIndex (x, y)] = px;
+			}
+
+		if (size > 1)
+		{
+			PVR_HalveRGBA (lvl, nxt, size);
+			memcpy (lvl, nxt, (size_t)(size >> 1) * (size >> 1) * 4);
+		}
+	}
+
+	free (lvl);
+	free (nxt);
+
+	if (glt->pvr_vram)
+	{
+		PVR_VramFree (glt->pvr_vram);
+		glt->pvr_vram = NULL;
+	}
+	vram = PVR_VramAlloc (chain_pad);
+	if (!vram)
+	{
+		Con_Printf ("PVR_UploadTextureMipmap: out of VRAM for %s (%dx%d)\n", glt->name, w, h);
+		glt->pvr_fmt = 0;
+		free (chain);
+		return;
+	}
+
+	pvr_txr_load (chain, (pvr_ptr_t)vram, chain_pad);
+	free (chain);
+
+	glt->pvr_vram   = vram;
+	glt->pvr_fmt    = (alpha ? PVR_TXRFMT_ARGB4444 : PVR_TXRFMT_RGB565) | PVR_TXRFMT_TWIDDLED;
+	glt->pvr_mipmap = 1;
 }
 
 //------------------------------------------------------------------------------
@@ -138,6 +275,7 @@ void PVR_UploadTextureIndexed (struct gltexture_s *glt, const void *indices, int
 
 	glt->pvr_vram = vram;
 	glt->pvr_fmt  = PVR_TXRFMT_PAL8BPP | PVR_TXRFMT_8BPP_PAL (palbank);
+	glt->pvr_mipmap = 0;
 }
 
 void PVR_UploadTexture (struct gltexture_s *glt, const void *rgba, int w, int h, unsigned flags)

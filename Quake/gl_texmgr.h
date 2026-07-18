@@ -69,6 +69,7 @@ typedef struct gltexture_s {
 	// void*/unsigned so this header needn't pull <dc/pvr.h> (its HZ clash).
 	void			*pvr_vram;	// pvr_ptr_t, NULL until uploaded
 	unsigned		pvr_fmt;	// PVR_TXRFMT_* (with twiddle/size bits)
+	unsigned char		pvr_mipmap;	// 1 = pvr_vram holds a twiddled mip chain
 #endif
 } gltexture_t;
 

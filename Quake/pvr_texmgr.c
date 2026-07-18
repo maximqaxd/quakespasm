@@ -811,6 +811,23 @@ static int TexMgr_PicmipFor (gltexture_t *glt)
 
 /*
 ================
+TexMgr_WantMipmap -- eligible for a PVR hardware mip chain?
+
+PVR mipmaps need a SQUARE power-of-two texture; we only mipmap those (non-square
+world textures stay single-level to keep VRAM in budget). Such textures take the
+twiddled 565/4444 mip path instead of the 8bpp paletted / non-twiddled upload.
+================
+*/
+static qboolean TexMgr_WantMipmap (gltexture_t *glt)
+{
+	return (glt->flags & TEXPREF_MIPMAP)
+	    && glt->width == glt->height
+	    && (glt->width & (glt->width - 1)) == 0
+	    && glt->width >= 8;
+}
+
+/*
+================
 TexMgr_LoadImage32 -- process 32bit RGBA then upload to VRAM
 ================
 */
@@ -844,8 +861,12 @@ static void TexMgr_LoadImage32 (gltexture_t *glt, unsigned *data)
 			TexMgr_AlphaEdgeFix ((byte *)data, glt->width, glt->height);
 	}
 
-	// upload to VRAM (RGB565 opaque / ARGB4444 alpha)
-	PVR_UploadTexture (glt, data, glt->width, glt->height, glt->flags);
+	// upload to VRAM: square-POT mipmapped -> twiddled 565/4444 mip chain;
+	// otherwise a single non-twiddled level (RGB565 opaque / ARGB4444 alpha)
+	if (TexMgr_WantMipmap (glt))
+		PVR_UploadTextureMipmap (glt, data, glt->width, glt->height, glt->flags);
+	else
+		PVR_UploadTexture (glt, data, glt->width, glt->height, glt->flags);
 }
 
 /*
@@ -941,7 +962,9 @@ static void TexMgr_LoadImage8 (gltexture_t *glt, byte *data, unsigned int *usepa
 	// VRAM of 16bpp). Transparency comes from the palette (index 255 -> alpha 0);
 	// the render side still routes TEXPREF_ALPHA surfaces to the punch-through list.
 	// Non-POT / padded pics fall through to the 32-bit path below (they're small).
-	if (global_pal &&
+	// Square-POT mipmapped textures also fall through -- their mip chain is 565/4444
+	// twiddled (paletted mips can't be box-filtered), handled in TexMgr_LoadImage32.
+	if (global_pal && !TexMgr_WantMipmap (glt) &&
 	    (int) glt->width  == TexMgr_Pad ((int) glt->width) &&
 	    (int) glt->height == TexMgr_Pad ((int) glt->height))
 	{
