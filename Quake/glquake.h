@@ -481,6 +481,7 @@ void PVR_BillboardBegin (int kind);
 void PVR_BillboardQuad (struct gltexture_s *tex, const float *v0, const float *v1, const float *v2, const float *v3, float s0, float t0, float s1, float t1, float s2, float t2, float s3, float t3, uint32_t argb);
 void PVR_DrawSpriteEnts (void);
 void PVR_DrawViewBlend (void);	// fullscreen view tint (V_PolyBlend), drawn in the TR phase
+void PVR_SetupFog (float density, float r, float g, float b);	// hardware table fog
 // brush-model entities: object transform + their solid/liquid surface chains
 void PVR_SetupEntityMatrices (vec3_t origin, vec3_t angles, unsigned char scale);
 void PVR_RestoreWorldMatrix (void);

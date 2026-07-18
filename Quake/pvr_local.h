@@ -113,6 +113,7 @@ void	PVR_DrawWorld_Fullbright (qmodel_t *model);
 void	PVR_DrawBrushModel_Fullbright (qmodel_t *model);
 
 extern int	pvr_frame_list;			// currently open list, -1 if none
+extern qboolean	pvr_fog_active;			// hardware table fog on (pvr_fog.c)
 
 //==============================================================================
 // rmath -- matrices & vertex transform  (pvr_rmath.c)

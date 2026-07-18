@@ -304,6 +304,13 @@ called at the beginning of each frame
 */
 void Fog_SetupFrame (void)
 {
+#if defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER)
+	// Native PVR: drive the hardware table fog instead of glFog (same GL_EXP2
+	// density/64 the GL path uses, so it matches).
+	float *c = Fog_GetColor ();
+	PVR_SetupFog (Fog_GetDensity () / 64.0f, c[0], c[1], c[2]);
+	return;
+#endif
 	glFogfv(GL_FOG_COLOR, Fog_GetColor());
 	glFogf(GL_FOG_DENSITY, Fog_GetDensity() / 64.0);
 }

@@ -148,6 +148,11 @@ void PVR_FlushState (void)
 	// until the surface/model submit paths settle their vertex order.
 	cxt.gen.culling = PVR_CULLING_NONE;
 
+	// Hardware table fog: the PVR blends toward the fog color per pixel from the
+	// vertex 1/w we already submit (pvr_fog.c set the table + color). Costs nothing
+	// per vertex; only the header carries the enable. Off when the map has no fog.
+	cxt.gen.fog_type = pvr_fog_active ? PVR_FOG_TABLE : PVR_FOG_DISABLE;
+
 	pvr_poly_compile (&st_hdr, &cxt);
 	pvr_prim (&st_hdr, sizeof(st_hdr));
 
