@@ -769,4 +769,8 @@ void GL_Set2D (void)
 	glDisable (GL_BLEND);
 	glEnable (GL_ALPHA_TEST);
 	glColor4f (1,1,1,1);
+
+#if defined(PLATFORM_DREAMCAST)
+	glDisable (GL_NEARZ_CLIPPING_KOS);
+#endif
 }
