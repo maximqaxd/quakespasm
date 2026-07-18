@@ -287,6 +287,7 @@ typedef struct
 qboolean DC_VMU_SaveGame (const char *savename, const char *mapname, const char *comment);
 qboolean DC_VMU_LoadGame (const char *savename);
 qboolean DC_VMU_GetSaveComment (const char *savename, char *out, int outsize);
+void DC_VMU_ScanSaves (void);
 qboolean DC_VMU_WriteConfig (const void *data, int len);
 byte *DC_VMU_ReadConfig (int *out_len);
 #endif

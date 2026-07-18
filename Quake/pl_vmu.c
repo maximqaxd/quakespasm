@@ -34,6 +34,32 @@ description is the map name; the icon is the Quake logo (from nuquake_enhanced).
 #define VMU_COMMENT_LEN	40		// SAVEGAME_COMMENT_LENGTH(39) + 1, null-padded
 #define VMU_PREFIX_LEN	(VMU_HDR_LEN + VMU_COMMENT_LEN)
 
+// Menu save-slot comment cache. Reading a comment means pulling the whole
+// compressed save off the VMU (fs_vmu loads the entire file on open), and the
+// menu asks for all 20 slots every time it opens. Doing that over the slow
+// maple bus while a menu sound plays starves the audio DMA and the sound loops.
+// So we scan the VMU exactly once at boot (no sound yet) and keep the comments
+// in RAM; the menu reads the cache instantly and saves patch it in place.
+#define DC_VMU_MAXSLOTS	20
+static char	s_vmu_comment[DC_VMU_MAXSLOTS][VMU_COMMENT_LEN];
+static qboolean	s_vmu_loadable[DC_VMU_MAXSLOTS];
+static qboolean	s_vmu_scanned;
+
+// "s0".."s19" -> slot index, or -1 for a non-numbered name.
+static int DC_VMU_SlotIndex (const char *save)
+{
+	int	n = 0;
+	const char *p;
+
+	if ((save[0] != 's' && save[0] != 'S') || save[1] < '0' || save[1] > '9')
+		return -1;
+	for (p = save + 1; *p >= '0' && *p <= '9'; p++)
+		n = n * 10 + (*p - '0');
+	if (*p || n < 0 || n >= DC_VMU_MAXSLOTS)
+		return -1;
+	return n;
+}
+
 // Quake logo icon (32x32 4bpp) + ARGB4444 palette -- from nuquake_enhanced.
 static const uint16_t quake_icon_pal[16] =
 {
@@ -230,6 +256,18 @@ qboolean DC_VMU_SaveGame (const char *savename, const char *mapname, const char 
 		ok = true;
 	fs_close (f);
 
+	if (ok)
+	{
+		// Keep the menu's comment cache current without re-reading the VMU.
+		int idx = DC_VMU_SlotIndex (savename);
+		if (idx >= 0)
+		{
+			q_strlcpy (s_vmu_comment[idx], comment ? comment : "", VMU_COMMENT_LEN);
+			s_vmu_loadable[idx] = true;
+			s_vmu_scanned = true;
+		}
+	}
+
 done:
 	free (raw);
 	free (payload);
@@ -286,28 +324,61 @@ done:
 
 /*
 ==============
-DC_VMU_GetSaveComment -- read a save's menu comment from the VMU (no inflate)
+DC_VMU_ScanSaves -- populate the comment cache from the VMU (blocking maple I/O)
+
+Call once at boot, before any menu sound can play. Reads every numbered slot's
+comment prefix; empty slots fail fast (no such file), existing saves cost one
+whole-file read each.
+==============
+*/
+void DC_VMU_ScanSaves (void)
+{
+	char	save[16], vmuname[16];
+	byte	*payload;
+	int	i, paylen;
+
+	for (i = 0; i < DC_VMU_MAXSLOTS; i++)
+	{
+		s_vmu_loadable[i] = false;
+		s_vmu_comment[i][0] = '\0';
+
+		q_snprintf (save, sizeof(save), "s%i", i);
+		DC_VMU_Filename (save, vmuname);
+		paylen = 0;
+		payload = DC_VMU_ReadPayload (vmuname, &paylen);
+		if (!payload)
+			continue;
+		if (paylen >= VMU_PREFIX_LEN && !memcmp (payload, VMU_SAVE_MAGIC, 4))
+		{
+			q_strlcpy (s_vmu_comment[i], (const char *)payload + VMU_HDR_LEN, VMU_COMMENT_LEN);
+			s_vmu_loadable[i] = true;
+		}
+		free (payload);
+	}
+	s_vmu_scanned = true;
+}
+
+/*
+==============
+DC_VMU_GetSaveComment -- a save's menu comment, served from the RAM cache
+
+No VMU access here: the menu opens this 20 times in a row and blocking the main
+thread on the maple bus would starve the sound DMA. The cache is filled once at
+boot by DC_VMU_ScanSaves and kept current by DC_VMU_SaveGame.
 ==============
 */
 qboolean DC_VMU_GetSaveComment (const char *savename, char *out, int outsize)
 {
-	char	vmuname[16];
-	byte	*payload;
-	int	paylen = 0;
-	qboolean ok = false;
+	int	idx = DC_VMU_SlotIndex (savename);
 
-	DC_VMU_Filename (savename, vmuname);
-	payload = DC_VMU_ReadPayload (vmuname, &paylen);
-	if (!payload)
+	if (idx < 0)
 		return false;
-
-	if (paylen >= VMU_PREFIX_LEN && !memcmp (payload, VMU_SAVE_MAGIC, 4))
-	{
-		q_strlcpy (out, (const char *)payload + VMU_HDR_LEN, outsize);
-		ok = true;
-	}
-	free (payload);
-	return ok;
+	if (!s_vmu_scanned)		// safety net if boot scan was skipped
+		DC_VMU_ScanSaves ();
+	if (!s_vmu_loadable[idx])
+		return false;
+	q_strlcpy (out, s_vmu_comment[idx], outsize);
+	return true;
 }
 
 /*

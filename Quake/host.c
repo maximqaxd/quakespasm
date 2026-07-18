@@ -950,6 +950,9 @@ void Host_Init (void)
 				Cbuf_AddText ("\n");
 				free (cfg);
 			}
+			// Prime the save-slot comment cache now, while no menu sound plays;
+			// the load/save menu then reads it without blocking on the maple bus.
+			DC_VMU_ScanSaves ();
 		}
 #endif
 	}

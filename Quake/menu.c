@@ -435,7 +435,8 @@ void M_ScanSaves (void)
 		strcpy (m_filenames[i], "--- UNUSED SLOT ---");
 		loadable[i] = false;
 #if defined(PLATFORM_DREAMCAST)
-		// Saves live on the VMU; read the stored comment (no decompress needed).
+		// Saves live on the VMU; the comment comes from a RAM cache primed at
+		// boot (DC_VMU_ScanSaves), so this loop never touches the maple bus.
 		q_snprintf (name, sizeof(name), "s%i", i);
 		if (DC_VMU_GetSaveComment (name, m_filenames[i], SAVEGAME_COMMENT_LENGTH+1))
 		{
