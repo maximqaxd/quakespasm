@@ -1,99 +1,115 @@
 /*
 ================================================================================
-pvr_glstub.c -- no-op GLdc stubs for the native PVR build (maximqad)
+pvr_glstub.c -- no-op GL stubs for the native PVR build (maximqad)
 
-De-GLfying, step 1 (linking): the native PVR renderer no longer links libGL. But
+De-GLfying: the native PVR renderer no longer links or includes GLdc. But
 several render paths that aren't ported yet (alias models, sprites, particles,
-sky, fog, screen-scale) are still compiled and reference gl* symbols.
-Rather than keep linking GLdc -- whose entry points would crash if reached
-uninitialized -- we resolve those symbols here with harmless no-ops. Any not-yet-
-ported path that slips through simply draws nothing instead of hanging the TA.
+sky, fog, screen-scale) are still compiled and reference gl* symbols. Rather
+than link GLdc -- whose entry points would crash if reached uninitialized -- we
+resolve those symbols here with harmless no-ops. Any not-yet-ported path that
+slips through simply draws nothing instead of hanging the TA.
 
-Each stub is defined with (void) parameters: this TU never includes <GL/gl.h>, so
-there's no prototype conflict, and callers in other TUs pass their arguments per
-the real prototype -- the stub just ignores them in-register. As each path is
-ported to a pvr_ module and swapped out of the build, its symbols drop off this
-list; when the list is empty this file goes away.
+The stubs are defined with the SAME prototypes the rest of the engine sees
+(gl_pvr_types.h), so LTO doesn't flag a type mismatch and the compiler checks
+the bodies against the declarations. As each path is ported to a pvr_ module
+and swapped out of the build, its symbols drop off this list; when the list is
+empty this file goes away.
 ================================================================================
 */
 #if defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER)
 
-// --- functions with outputs / return values: real-enough signatures ----------
-unsigned int glGetError (void) { return 0; }			// GL_NO_ERROR
-const unsigned char *glGetString (void) { return (const unsigned char *)""; }
-void glGenTextures (int n, unsigned int *t) { int i; for (i = 0; i < n; i++) t[i] = 1; }
-void glGetIntegerv (unsigned int pname, int *v) { (void)pname; if (v) *v = 0; }
-void glGetFloatv (unsigned int pname, float *v) { (void)pname; if (v) *v = 0.0f; }
+#include "gl_pvr_types.h"
 
-// --- pure side-effect entry points: no-op (args ignored) ---------------------
-void glAlphaFunc (void) {}
-void glBegin (void) {}
-void glBindTexture (void) {}
-void glBlendFunc (void) {}
-void glClear (void) {}
-void glClearColor (void) {}
-void glColor3f (void) {}
-void glColor3fv (void) {}
-void glColor4f (void) {}
-void glColor4fv (void) {}
-void glColor4ub (void) {}
-void glColorMask (void) {}
-void glColorPointer (void) {}
-void glCullFace (void) {}
-void glDeleteTextures (void) {}
-void glDepthFunc (void) {}
-void glDepthMask (void) {}
-void glDisable (void) {}
-void glDisableClientState (void) {}
-void glDrawArrays (void) {}
-void glEnable (void) {}
-void glEnableClientState (void) {}
+// --- functions with outputs / return values ----------------------------------
+GLenum glGetError (void) { return GL_NO_ERROR; }
+const GLubyte *glGetString (GLenum name) { (void)name; return (const GLubyte *)""; }
+void glGenTextures (GLsizei n, GLuint *t) { GLsizei i; for (i = 0; i < n; i++) t[i] = 1; }
+void glGetIntegerv (GLenum pname, GLint *v) { (void)pname; if (v) *v = 0; }
+void glGetFloatv (GLenum pname, GLfloat *v) { (void)pname; if (v) *v = 0.0f; }
+
+// --- pure side-effect entry points: no-op -----------------------------------
+void glAlphaFunc (GLenum func, GLclampf ref) {}
+void glBegin (GLenum mode) {}
 void glEnd (void) {}
-void glFinish (void) {}
 void glFlush (void) {}
-void glFogf (void) {}
-void glFogfv (void) {}
-void glFogi (void) {}
-void glFrontFace (void) {}
-void glHint (void) {}
-void glLineWidth (void) {}
+void glFinish (void) {}
+void glFrontFace (GLenum mode) {}
+void glCullFace (GLenum mode) {}
+void glLineWidth (GLfloat w) {}
+void glPointSize (GLfloat s) {}
+void glNormal3f (GLfloat x, GLfloat y, GLfloat z) {}
+void glBindTexture (GLenum target, GLuint texture) {}
+void glBlendFunc (GLenum s, GLenum d) {}
+void glClear (GLbitfield mask) {}
+void glClearColor (GLclampf r, GLclampf g, GLclampf b, GLclampf a) {}
+void glColor3f (GLfloat r, GLfloat g, GLfloat b) {}
+void glColor3fv (const GLfloat *v) {}
+void glColor4f (GLfloat r, GLfloat g, GLfloat b, GLfloat a) {}
+void glColor4fv (const GLfloat *v) {}
+void glColor4ub (GLubyte r, GLubyte g, GLubyte b, GLubyte a) {}
+void glColor4ubv (const GLubyte *v) {}
+void glColorMask (GLboolean r, GLboolean g, GLboolean b, GLboolean a) {}
+void glColorPointer (GLint size, GLenum type, GLsizei stride, const void *ptr) {}
+void glCopyTexSubImage2D (GLenum target, GLint level, GLint xo, GLint yo, GLint x, GLint y, GLsizei w, GLsizei h) {}
+void glDeleteTextures (GLsizei n, const GLuint *t) {}
+void glDepthFunc (GLenum func) {}
+void glDepthMask (GLboolean flag) {}
+void glDepthRange (GLclampd n, GLclampd f) {}
+void glDisable (GLenum cap) {}
+void glDisableClientState (GLenum a) {}
+void glDrawArrays (GLenum mode, GLint first, GLsizei count) {}
+void glDrawElements (GLenum mode, GLsizei count, GLenum type, const void *indices) {}
+void glEnable (GLenum cap) {}
+void glEnableClientState (GLenum a) {}
+void glFogf (GLenum pname, GLfloat param) {}
+void glFogfv (GLenum pname, const GLfloat *params) {}
+void glFogi (GLenum pname, GLint param) {}
+void glFrustum (GLdouble l, GLdouble r, GLdouble b, GLdouble t, GLdouble n, GLdouble f) {}
+void glOrtho (GLdouble l, GLdouble r, GLdouble b, GLdouble t, GLdouble n, GLdouble f) {}
+void glGetTexImage (GLenum target, GLint level, GLenum format, GLenum type, void *pixels) {}
+void glHint (GLenum target, GLenum mode) {}
 void glLoadIdentity (void) {}
-void glLoadMatrixf (void) {}
-void glLoadTransposeMatrixf (void) {}
-void glMatrixMode (void) {}
-void glMultMatrixf (void) {}
-void glMultTransposeMatrixf (void) {}
-void glNormal3f (void) {}
-void glOrtho (void) {}
-void glPixelStorei (void) {}
-void glPointSize (void) {}
+void glLoadMatrixf (const GLfloat *m) {}
+void glLoadTransposeMatrixf (const GLfloat *m) {}
+void glMatrixMode (GLenum mode) {}
+void glMultMatrixf (const GLfloat *m) {}
+void glMultTransposeMatrixf (const GLfloat *m) {}
+void glPixelStorei (GLenum pname, GLint param) {}
+void glPolygonMode (GLenum face, GLenum mode) {}
+void glPolygonOffset (GLfloat factor, GLfloat units) {}
 void glPopMatrix (void) {}
 void glPushMatrix (void) {}
-void glReadBuffer (void) {}
-void glReadPixels (void) {}
-void glRectf (void) {}
-void glRotatef (void) {}
-void glScalef (void) {}
-void glScissor (void) {}
-void glShadeModel (void) {}
-void glTexCoord2f (void) {}
-void glTexCoord2fv (void) {}
-void glTexCoordPointer (void) {}
-void glTexEnvf (void) {}
-void glTexEnvi (void) {}
-void glTexImage2D (void) {}
-void glTexParameteri (void) {}
-void glTexSubImage2D (void) {}
-void glTranslatef (void) {}
-void glVertex2f (void) {}
-void glVertex3fv (void) {}
-void glVertexPointer (void) {}
-void glViewport (void) {}
+void glReadBuffer (GLenum mode) {}
+void glReadPixels (GLint x, GLint y, GLsizei w, GLsizei h, GLenum format, GLenum type, void *pixels) {}
+void glRectf (GLfloat x1, GLfloat y1, GLfloat x2, GLfloat y2) {}
+void glRotatef (GLfloat a, GLfloat x, GLfloat y, GLfloat z) {}
+void glScalef (GLfloat x, GLfloat y, GLfloat z) {}
+void glScissor (GLint x, GLint y, GLsizei w, GLsizei h) {}
+void glShadeModel (GLenum mode) {}
+void glStencilFunc (GLenum func, GLint ref, GLuint mask) {}
+void glStencilOp (GLenum sfail, GLenum zfail, GLenum zpass) {}
+void glTexCoord2f (GLfloat s, GLfloat t) {}
+void glTexCoord2fv (const GLfloat *v) {}
+void glTexCoordPointer (GLint size, GLenum type, GLsizei stride, const void *ptr) {}
+void glTexEnvf (GLenum target, GLenum pname, GLfloat param) {}
+void glTexEnvi (GLenum target, GLenum pname, GLint param) {}
+void glTexImage2D (GLenum target, GLint level, GLint ifmt, GLsizei w, GLsizei h, GLint border, GLenum format, GLenum type, const void *pixels) {}
+void glTexParameterf (GLenum target, GLenum pname, GLfloat param) {}
+void glTexParameteri (GLenum target, GLenum pname, GLint param) {}
+void glTexSubImage2D (GLenum target, GLint level, GLint xo, GLint yo, GLsizei w, GLsizei h, GLenum format, GLenum type, const void *pixels) {}
+void glTranslatef (GLfloat x, GLfloat y, GLfloat z) {}
+void glVertex2f (GLfloat x, GLfloat y) {}
+void glVertex3f (GLfloat x, GLfloat y, GLfloat z) {}
+void glVertex3fv (const GLfloat *v) {}
+void glVertexPointer (GLint size, GLenum type, GLsizei stride, const void *ptr) {}
+void glViewport (GLint x, GLint y, GLsizei w, GLsizei h) {}
 
 // --- glKos*: NOT used by our renderer -- pvr_backend owns PVR init/swap now.
 // These exist solely to satisfy libSDL2's Dreamcast GL video backend
 // (SDL_dreamcastopengl.c), which the SDL video subsystem drags into the link
 // even though the PVR path never creates an SDL GL context. No-ops: never run.
+// (void)-typed on purpose: matching GLdc's GLdcConfig* would require pulling in
+// <GL/glkos.h>, which is exactly the header this de-GLfy removes.
 void glKosInit (void) {}
 void glKosInitEx (void) {}
 void glKosInitConfig (void) {}
