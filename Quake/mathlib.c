@@ -24,6 +24,14 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 
+#if defined(PLATFORM_DREAMCAST)
+// SH4 hardware math: FSCA (sin+cos in one op), FSQRT, FDIV, and the SIMD
+// cross product. These replace libm calls on the hot vector helpers below.
+#include <shz_scalar.h>
+#include <shz_trig.h>
+#include <shz_vector.h>
+#endif
+
 vec3_t vec3_origin = {0,0,0};
 
 /*-----------------------------------------------------------------*/
@@ -190,15 +198,30 @@ void VectorAngles (const vec3_t forward, vec3_t angles)
 	temp[0] = forward[0];
 	temp[1] = forward[1];
 	temp[2] = 0;
+#if defined(PLATFORM_DREAMCAST)
+	angles[PITCH] = -shz_atan2f(forward[2], VectorLength(temp)) / M_PI_DIV_180;
+	angles[YAW] = shz_atan2f(forward[1], forward[0]) / M_PI_DIV_180;
+#else
 	angles[PITCH] = -atan2(forward[2], VectorLength(temp)) / M_PI_DIV_180;
 	angles[YAW] = atan2(forward[1], forward[0]) / M_PI_DIV_180;
+#endif
 	angles[ROLL] = 0;
 }
 
 void AngleVectors (vec3_t angles, vec3_t forward, vec3_t right, vec3_t up)
 {
-	float		angle;
 	float		sr, sp, sy, cr, cp, cy;
+
+#if defined(PLATFORM_DREAMCAST)
+	// One FSCA each: sin+cos together, straight from degrees (no DEG2RAD).
+	shz_sincos_t	scy = shz_sincosf_deg (angles[YAW]);
+	shz_sincos_t	scp = shz_sincosf_deg (angles[PITCH]);
+	shz_sincos_t	scr = shz_sincosf_deg (angles[ROLL]);
+	sy = scy.sin; cy = scy.cos;
+	sp = scp.sin; cp = scp.cos;
+	sr = scr.sin; cr = scr.cos;
+#else
+	float		angle;
 
 	angle = angles[YAW] * (M_PI*2 / 360);
 	sy = sin(angle);
@@ -209,6 +232,7 @@ void AngleVectors (vec3_t angles, vec3_t forward, vec3_t right, vec3_t up)
 	angle = angles[ROLL] * (M_PI*2 / 360);
 	sr = sin(angle);
 	cr = cos(angle);
+#endif
 
 	forward[0] = cp*cy;
 	forward[1] = cp*sy;
@@ -268,20 +292,42 @@ void _VectorCopy (vec3_t in, vec3_t out)
 
 void CrossProduct (vec3_t v1, vec3_t v2, vec3_t cross)
 {
+#if defined(PLATFORM_DREAMCAST)
+	shz_vec3_t c = shz_vec3_cross (shz_vec3_init (v1[0], v1[1], v1[2]),
+				       shz_vec3_init (v2[0], v2[1], v2[2]));
+	cross[0] = c.x;
+	cross[1] = c.y;
+	cross[2] = c.z;
+#else
 	cross[0] = v1[1]*v2[2] - v1[2]*v2[1];
 	cross[1] = v1[2]*v2[0] - v1[0]*v2[2];
 	cross[2] = v1[0]*v2[1] - v1[1]*v2[0];
+#endif
 }
 
 vec_t VectorLength(vec3_t v)
 {
+#if defined(PLATFORM_DREAMCAST)
+	return shz_sqrtf (DotProduct(v,v));	// hardware FSQRT
+#else
 	return sqrt(DotProduct(v,v));
+#endif
 }
 
 float VectorNormalize (vec3_t v)
 {
 	float	length, ilength;
 
+#if defined(PLATFORM_DREAMCAST)
+	length = shz_sqrtf (DotProduct(v,v));	// FSQRT
+	if (length)
+	{
+		ilength = shz_invf (length);	// FDIV reciprocal
+		v[0] *= ilength;
+		v[1] *= ilength;
+		v[2] *= ilength;
+	}
+#else
 	length = sqrt(DotProduct(v,v));
 
 	if (length)
@@ -291,6 +337,7 @@ float VectorNormalize (vec3_t v)
 		v[1] *= ilength;
 		v[2] *= ilength;
 	}
+#endif
 
 	return length;
 }
