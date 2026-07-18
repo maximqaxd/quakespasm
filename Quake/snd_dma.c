@@ -77,7 +77,11 @@ cvar_t		precache = {"precache", "1", CVAR_NONE};
 cvar_t		loadas8bit = {"loadas8bit", "0", CVAR_NONE};
 
 cvar_t		sndspeed = {"sndspeed", "11025", CVAR_NONE};
+#if defined(PLATFORM_DREAMCAST)
+cvar_t		snd_mixspeed = {"snd_mixspeed", "22050", CVAR_NONE};
+#else
 cvar_t		snd_mixspeed = {"snd_mixspeed", "44100", CVAR_NONE};
+#endif
 
 #if defined(_WIN32)
 #define SND_FILTERQUALITY_DEFAULT "5"

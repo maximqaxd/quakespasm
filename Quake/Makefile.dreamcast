@@ -30,7 +30,8 @@ SDL2_PREFIX = $(KOS_BASE)/addons
 INCLUDES = -I. \
            -I$(SDL2_PREFIX)/include \
            -I$(SDL2_PREFIX)/include/SDL2 \
-           -I$(KOS_PORTS)/include
+           -I$(KOS_PORTS)/include \
+           -I$(KOS_PORTS)/sh4zam/inst/include
 
 DEFINES  = -DPLATFORM_DREAMCAST -DUSE_SDL2 -DNO_SDL_CONFIG -DGLQUAKE
 
@@ -86,8 +87,7 @@ MUSIC_OBJS += snd_opus.o
 endif
 
 COMOBJ_SND   = snd_dma.o snd_mix.o snd_mem.o $(sort $(MUSIC_OBJS))
-# Null audio backend for bring-up (set USE_NULL_SOUND=0 for the real SDL driver).
-USE_NULL_SOUND ?= 1
+USE_NULL_SOUND ?= 0
 ifeq ($(USE_NULL_SOUND),1)
 SYSOBJ_SND   = snd_null.o
 else
