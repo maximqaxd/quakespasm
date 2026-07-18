@@ -724,6 +724,68 @@ void Draw_FadeScreen (void)
 
 /*
 ================
+PVR_DrawViewBlend -- fullscreen view tint (damage/pickup/powerup/underwater)
+
+V_PolyBlend's PVR path, drawn at the end of the scene's TR phase (v_blend is
+already computed by V_CalcRefdef). GL draws it as a blended fullscreen quad with
+the depth test disabled; we mirror that with a screen-space quad in the TR list
+using our OWN poly context -- crucially gen.alpha ENABLED (the shared
+PVR_FlushState leaves the color-only context opaque, which was the bug) and
+depth comparison ALWAYS + no write (GL's glDisable(GL_DEPTH_TEST)). A depth just
+in front of the world makes autosort draw it last, over all translucent geometry.
+The HUD renders afterwards in the PT list, so it stays on top and is not tinted.
+================
+*/
+void PVR_DrawViewBlend (void)
+{
+	extern cvar_t	gl_polyblend;
+	extern float	v_blend[4];
+	pvr_poly_cxt_t	cxt;
+	pvr_poly_hdr_t	*hdr;
+	int		ir, ig, ib, ia, k;
+	uint32_t	argb;
+	float		qx[4], qy[4];
+
+	if (!gl_polyblend.value || v_blend[3] <= 0.0f)
+		return;
+
+	ia = (int)(v_blend[3] * 255.0f); if (ia > 255) ia = 255; else if (ia < 0) ia = 0;
+	ir = (int)(v_blend[0] * 255.0f); if (ir > 255) ir = 255; else if (ir < 0) ir = 0;
+	ig = (int)(v_blend[1] * 255.0f); if (ig > 255) ig = 255; else if (ig < 0) ig = 0;
+	ib = (int)(v_blend[2] * 255.0f); if (ib > 255) ib = 255; else if (ib < 0) ib = 0;
+	argb = ((uint32_t)ia << 24) | ((uint32_t)ir << 16) | ((uint32_t)ig << 8) | (uint32_t)ib;
+
+	PVR_ListBegin (PVR_LIST_TR_POLY);
+
+	// Own context: untextured, alpha-blended, always-pass depth, no depth write.
+	pvr_poly_cxt_col (&cxt, PVR_LIST_TR_POLY);
+	cxt.gen.culling    = PVR_CULLING_NONE;
+	cxt.gen.alpha      = PVR_ALPHA_ENABLE;			// <- the fix: actually blend
+	cxt.blend.src      = PVR_BLEND_SRCALPHA;
+	cxt.blend.dst      = PVR_BLEND_INVSRCALPHA;
+	cxt.depth.comparison = PVR_DEPTHCMP_ALWAYS;		// GL disables depth test here
+	cxt.depth.write    = PVR_DEPTHWRITE_DISABLE;
+	hdr = (pvr_poly_hdr_t *) pvr_dr_target (NULL);
+	pvr_poly_compile (hdr, &cxt);
+	pvr_dr_commit (hdr);
+
+	// screen-space fullscreen quad as a triangle strip (TL, TR, BL, BR)
+	qx[0] = 0;              qy[0] = 0;
+	qx[1] = (float)glwidth; qy[1] = 0;
+	qx[2] = 0;              qy[2] = (float)glheight;
+	qx[3] = (float)glwidth; qy[3] = (float)glheight;
+	for (k = 0; k < 4; k++)
+	{
+		pvr_vertex_t *vp = (pvr_vertex_t *) pvr_dr_target (NULL);
+		vp->flags = (k == 3) ? PVR_CMD_VERTEX_EOL : PVR_CMD_VERTEX;
+		vp->x = qx[k]; vp->y = qy[k]; vp->z = 1.0f;	// in front of world -> autosort draws last
+		vp->u = 0; vp->v = 0; vp->argb = argb; vp->oargb = 0;
+		pvr_dr_commit (vp);
+	}
+}
+
+/*
+================
 GL_SetCanvas -- johnfitz -- support various canvas types (PVR: affine, no glOrtho)
 ================
 */

@@ -532,6 +532,12 @@ void V_PolyBlend (void)
 	if (!gl_polyblend.value || !v_blend[3])
 		return;
 
+#if defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER)
+	// Handled by PVR_DrawViewBlend in the scene's TR phase (the TR list blends an
+	// untextured quad reliably; the PT list would alpha-test it away).
+	return;
+#endif
+
 	GL_DisableMultitexture();
 
 	glDisable (GL_ALPHA_TEST);

@@ -154,6 +154,24 @@ void R_DrawSpriteModel (entity_t *e)
 		return;
 	}
 
+#if defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER)
+	// Native PVR: one camera-facing quad, transformed + submitted by pvr_sprite.
+	// The caller (PVR_DrawSpriteEnts) has already opened the PT list. Corner order
+	// and texcoords match the GL fan below (down/left, up/left, up/right, down/right).
+	{
+		vec3_t	p0, p1, p2, p3;
+
+		VectorMA (e->origin, frame->down * scale, s_up, p0); VectorMA (p0, frame->left  * scale, s_right, p0);
+		VectorMA (e->origin, frame->up   * scale, s_up, p1); VectorMA (p1, frame->left  * scale, s_right, p1);
+		VectorMA (e->origin, frame->up   * scale, s_up, p2); VectorMA (p2, frame->right * scale, s_right, p2);
+		VectorMA (e->origin, frame->down * scale, s_up, p3); VectorMA (p3, frame->right * scale, s_right, p3);
+
+		PVR_BillboardQuad (frame->gltexture, p0, p1, p2, p3,
+				   0, frame->tmax, 0, 0, frame->smax, 0, frame->smax, frame->tmax, 0xffffffffu);
+		return;
+	}
+#endif
+
 	//johnfitz: offset decals
 	if (psprite->type == SPR_ORIENTED)
 		GL_PolygonOffset (OFFSET_DECAL);

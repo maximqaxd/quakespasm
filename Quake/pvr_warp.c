@@ -142,4 +142,136 @@ void PVR_DrawBrushModel_Water (qmodel_t *model)
 	PVR_DrawWaterChains (model, chain_model, false);
 }
 
+//==============================================================================
+// Sky
+//
+// Two paths, matching gl_sky.c: r_fastsky draws the sky surfaces as a flat
+// skyflatcolor fill; otherwise the classic two scrolling cloud layers -- an
+// opaque solidsky layer (OP) and a transparent alphasky layer blended over it
+// (TR) -- with texcoords projected per vertex from the view origin (the sphere-
+// flattened Sky_GetTexCoord math). Drawn directly on the real sky surfaces (not
+// a skybox), so they write depth at their world position and are occluded
+// normally; the alpha layer sits at the same depth via GEQUAL.
+//==============================================================================
+
+// Per-vertex sky texcoord (gl_sky.c Sky_GetTexCoord): project the vertex
+// direction from the eye, flatten the sphere, and scroll by cl.time * speed.
+static void PVR_SkyTexCoord (const float *v, float speed, float *s, float *t)
+{
+	vec3_t	dir;
+	float	length, scroll;
+
+	VectorSubtract (v, r_origin, dir);
+	dir[2] *= 3.0f;					// flatten the sphere
+
+	length = dir[0]*dir[0] + dir[1]*dir[1] + dir[2]*dir[2];
+	length = sqrtf (length);
+	length = (6.0f * 63.0f) / length;
+
+	scroll  = (float)cl.time * speed;
+	scroll -= (int)scroll & ~127;
+
+	*s = (scroll + dir[0] * length) * (1.0f / 128.0f);
+	*t = (scroll + dir[1] * length) * (1.0f / 128.0f);
+}
+
+// Emit every SURF_DRAWSKY face of a texture chain. mode: 0 = flat color, 1 =
+// solidsky (speed 8), 2 = alphasky (speed 16). uu/vv unused for flat.
+static void PVR_DrawSkyChains (qmodel_t *model, int mode, uint32_t flatcol)
+{
+	int		i, j, n;
+	texture_t	*t;
+	msurface_t	*s;
+	glpoly_t	*p;
+	float		speed = (mode == 2) ? 16.0f : 8.0f;
+
+	for (i = 0; i < model->numtextures; i++)
+	{
+		t = model->textures[i];
+		if (!t || !t->texturechains[chain_world])
+			continue;
+		if (!(t->texturechains[chain_world]->flags & SURF_DRAWSKY))
+			continue;
+
+		for (s = t->texturechains[chain_world]; s; s = s->texturechain)
+		{
+			if (!(s->flags & SURF_DRAWSKY) || !s->polys)
+				continue;
+
+			for (p = s->polys; p; p = p->next)
+			{
+				float		uu[PVR_MAX_POLY_VERTS], vv[PVR_MAX_POLY_VERTS];
+				uint32_t	col[PVR_MAX_POLY_VERTS];
+				float		*base = p->verts[0];
+
+				n = p->numverts;
+				if (n > PVR_MAX_POLY_VERTS)
+					n = PVR_MAX_POLY_VERTS;
+				for (j = 0; j < n; j++)
+				{
+					float *vv3 = base + j * VERTEXSIZE;
+					if (mode == 0)
+					{
+						uu[j] = vv[j] = 0.0f;
+						col[j] = flatcol;
+					}
+					else
+					{
+						PVR_SkyTexCoord (vv3, speed, &uu[j], &vv[j]);
+						col[j] = 0xffffffffu;
+					}
+				}
+				PVR_EmitPoly (p, uu, vv, col);
+			}
+		}
+	}
+}
+
+// OP pass: fast -> flat skyflatcolor; slow -> opaque solidsky layer.
+void PVR_DrawWorld_Sky (qmodel_t *model)
+{
+	qboolean	fast = (r_fastsky.value != 0.0f) || !solidskytexture;
+
+	PVR_ListBegin (PVR_LIST_OP_POLY);
+	PVR_SetBlend (GL_ONE, GL_ZERO);
+	PVR_SetTexEnv (GL_MODULATE);
+
+	if (fast)
+	{
+		int r = (int)(skyflatcolor[0] * 255.0f);
+		int g = (int)(skyflatcolor[1] * 255.0f);
+		int b = (int)(skyflatcolor[2] * 255.0f);
+		uint32_t argb;
+		if (r > 255) r = 255; else if (r < 0) r = 0;
+		if (g > 255) g = 255; else if (g < 0) g = 0;
+		if (b > 255) b = 255; else if (b < 0) b = 0;
+		argb = 0xff000000u | ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)b;
+
+		GL_Bind (NULL);			// untextured -> flat vertex color
+		PVR_FlushState ();
+		PVR_DrawSkyChains (model, 0, argb);
+	}
+	else
+	{
+		GL_Bind (solidskytexture);
+		PVR_FlushState ();
+		PVR_DrawSkyChains (model, 1, 0);
+	}
+}
+
+// TR pass: slow only -- the transparent alphasky layer scrolled over the solid.
+void PVR_DrawWorld_SkyAlpha (qmodel_t *model)
+{
+	if (r_fastsky.value != 0.0f || !solidskytexture || !alphaskytexture)
+		return;
+
+	PVR_ListBegin (PVR_LIST_TR_POLY);
+	PVR_SetBlend (GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	PVR_SetTexEnv (GL_MODULATE);		// keep the layer's texel alpha (holes)
+	GL_Bind (alphaskytexture);
+	PVR_FlushState ();
+
+	PVR_DrawSkyChains (model, 2, 0);
+}
+
 #endif	/* PLATFORM_DREAMCAST && USE_PVR_RENDER */

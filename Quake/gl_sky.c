@@ -35,17 +35,25 @@ float *Fog_GetColor(void);
 extern	int	rs_skypolys; // for r_speeds readout
 extern	int	rs_skypasses; // for r_speeds readout
 
+#if defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER)
+float	skyflatcolor[3];	// exposed: the native PVR sky pass (pvr_warp.c) reads it
+#else
 static float	skyflatcolor[3];
+#endif
 static float	skymins[2][6], skymaxs[2][6];
 
 static char	skybox_name[1024]; //name of current skybox, or "" if no skybox
 
 static gltexture_t	*skybox_textures[6];
+#if defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER)
+gltexture_t	*solidskytexture, *alphaskytexture;	// exposed for the PVR sky pass
+#else
 static gltexture_t	*solidskytexture, *alphaskytexture;
+#endif
 
 extern cvar_t gl_farclip;
 #if defined(PLATFORM_DREAMCAST)
-static cvar_t r_fastsky = {"r_fastsky", "1", CVAR_NONE};
+cvar_t r_fastsky = {"r_fastsky", "0", CVAR_NONE};	// non-static: PVR sky pass reads it
 #else
 static cvar_t r_fastsky = {"r_fastsky", "0", CVAR_NONE};
 #endif

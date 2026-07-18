@@ -440,6 +440,12 @@ void PVR_DrawWorld_Water (qmodel_t *model);
 void PVR_DrawWorld_WaterOpaque (qmodel_t *model);
 void PVR_DrawWorld_WaterTrans (qmodel_t *model);
 void PVR_DrawWorld_Fence (qmodel_t *model);
+// sky (pvr_warp.c): fast = flat skyflatcolor; slow = solidsky (OP) + alphasky (TR)
+extern float skyflatcolor[3];
+extern struct gltexture_s *solidskytexture, *alphaskytexture;
+extern cvar_t r_fastsky;
+void PVR_DrawWorld_Sky (qmodel_t *model);
+void PVR_DrawWorld_SkyAlpha (qmodel_t *model);
 void PVR_DrawWorld_Fullbright (qmodel_t *model);
 void PVR_DrawBrushModel_Fullbright (qmodel_t *model);
 qboolean R_PVRBrushModel_Setup (entity_t *e);
@@ -451,11 +457,14 @@ void PVR_DrawBrushEnts_Fullbright (void);
 #define PVR_ALIAS_HOLEY		1	// PT list, alpha-tested cutout (MF_HOLEY)
 #define PVR_ALIAS_TRANS		2	// TR list, entity-alpha blend
 #define PVR_ALIAS_GLOW		3	// TR list, additive fullbright/luma skin overlay
-// View-weapon depth bias: the PVR W-buffer stores 1/w (nearer == larger), and
-// near-clipped world geometry maxes out at 1/NEARCLIP == 0.25. Adding this to the
-// gun's submitted depth lifts it above every world fragment so it wins GEQUAL and
-// never pokes through walls -- the W-buffer analog of GL's glDepthRange(0,0.3).
-#define PVR_VIEWMODEL_DEPTH_BIAS	8.0f
+// View-weapon depth bias: the PVR W-buffer stores 1/w (nearer == larger). Near-
+// clipped world geometry maxes out at 1/NEARCLIP == 0.25, and the 2D HUD/UI layer
+// submits at z == 1.0. The view weapon belongs BETWEEN them: adding this to its
+// 1/w lifts it above every world fragment (so it never pokes through walls) while
+// staying under 1.0 (so the HUD, which the PT list still depth-tests, stays on
+// top). Gun 1/w is <= 0.25 too, so the biased range is ~(0.52, 0.75). This is the
+// W-buffer analog of GL's glDepthRange(0,0.3).
+#define PVR_VIEWMODEL_DEPTH_BIAS	0.5f
 extern float pvr_depth_bias;		// added to each submitted vertex's 1/w (0 normally)
 void PVR_SetupAliasMatrices (vec3_t origin, vec3_t angles, unsigned char scale, vec3_t hdr_scale, vec3_t hdr_scale_origin, float fovscale);
 void PVR_SubmitAliasFrame (const float *pos, const float *st, const uint32_t *argb, const unsigned short *idx, int numverts, int numtris, struct gltexture_s *tx, int passkind);
@@ -464,6 +473,14 @@ void PVR_DrawAliasEnts_Opaque (void);
 void PVR_DrawAliasEnts_Holey (void);
 void PVR_DrawAliasEnts_Translucent (void);
 void PVR_DrawAliasEnts_Fullbright (void);
+
+// world-space billboards -- particles (r_part.c) and sprite models (r_sprite.c)
+#define PVR_BILLBOARD_TR	0	// TR list, blended, no depth write (particles)
+#define PVR_BILLBOARD_PT	1	// PT list, alpha-tested cutout (sprites)
+void PVR_BillboardBegin (int kind);
+void PVR_BillboardQuad (struct gltexture_s *tex, const float *v0, const float *v1, const float *v2, const float *v3, float s0, float t0, float s1, float t1, float s2, float t2, float s3, float t3, uint32_t argb);
+void PVR_DrawSpriteEnts (void);
+void PVR_DrawViewBlend (void);	// fullscreen view tint (V_PolyBlend), drawn in the TR phase
 // brush-model entities: object transform + their solid/liquid surface chains
 void PVR_SetupEntityMatrices (vec3_t origin, vec3_t angles, unsigned char scale);
 void PVR_RestoreWorldMatrix (void);

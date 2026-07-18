@@ -843,6 +843,51 @@ void R_DrawParticles (void)
 	if (!active_particles)
 		return;
 
+#if defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER)
+	// Native PVR: each particle is a camera-facing quad in the TR list (blended,
+	// no depth write). Billboards built here (quad path), transformed + submitted
+	// by pvr_sprite. Matches the r_quadparticles texcoords/scale.
+	{
+		particle_t	*pp;
+		vec3_t		pup, pright;
+
+		VectorScale (vup, 1.5f, pup);
+		VectorScale (vright, 1.5f, pright);
+
+		PVR_BillboardBegin (PVR_BILLBOARD_TR);
+		for (pp = active_particles; pp; pp = pp->next)
+		{
+			float	sc = (pp->org[0] - r_origin[0]) * vpn[0]
+				    + (pp->org[1] - r_origin[1]) * vpn[1]
+				    + (pp->org[2] - r_origin[2]) * vpn[2];
+			vec3_t	v0, v1, v2, v3, su, sr;
+			byte	*pc;
+			uint32_t argb;
+
+			if (sc < 20)
+				sc = 1 + 0.08f;
+			else
+				sc = 1 + sc * 0.004f;
+			sc *= 0.5f;			// quad is half the triangle size
+			sc *= texturescalefactor;
+
+			VectorScale (pup, sc, su);
+			VectorScale (pright, sc, sr);
+			VectorCopy (pp->org, v0);
+			VectorAdd (pp->org, su, v1);
+			VectorAdd (v1, sr, v2);
+			VectorAdd (pp->org, sr, v3);
+
+			pc = (byte *) &d_8to24table[(int)pp->color];
+			argb = 0xff000000u | ((uint32_t)pc[0] << 16) | ((uint32_t)pc[1] << 8) | (uint32_t)pc[2];
+
+			PVR_BillboardQuad (particletexture, v0, v1, v2, v3,
+					   0, 0, 0.5f, 0, 0.5f, 0.5f, 0, 0.5f, argb);
+		}
+	}
+	return;
+#endif
+
 	VectorScale (vup, 1.5, up);
 	VectorScale (vright, 1.5, right);
 

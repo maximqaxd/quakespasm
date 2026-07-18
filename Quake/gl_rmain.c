@@ -846,6 +846,26 @@ void PVR_DrawAliasEnts_Fullbright (void)
 		PVR_DrawAliasModel (&cl.viewent, PVR_ALIAS_GLOW);
 	}
 }
+
+// Sprite-model entities (explosions, ammo/health boxes, flames): camera-facing
+// alpha-tested quads in the PT phase. R_DrawSpriteModel builds the billboard; the
+// batch's list/state is opened once here.
+void PVR_DrawSpriteEnts (void)
+{
+	int	i;
+
+	if (!r_drawentities.value)
+		return;
+	PVR_BillboardBegin (PVR_BILLBOARD_PT);
+	for (i = 0; i < cl_numvisedicts; i++)
+	{
+		entity_t *e = cl_visedicts[i];
+		if (!e->model || e->model->type != mod_sprite)
+			continue;
+		currententity = e;		// R_DrawSpriteModel reads the global for some types
+		R_DrawSpriteModel (e);
+	}
+}
 #endif	/* PLATFORM_DREAMCAST && USE_PVR_RENDER */
 
 /*
@@ -1115,20 +1135,25 @@ void R_RenderScene (void)
 	// sky/shadows/alias/sprite/particles/viewmodel are not ported yet.
 
 	// --- OP: opaque solid geometry ---
+	PVR_DrawWorld_Sky (cl.worldmodel);        // sky backdrop (flat, or solid cloud layer)
 	R_DrawWorld ();                           // world solid surfaces
 	PVR_DrawBrushEnts_Solid ();               // brush ents: solid + opaque liquid
 	PVR_DrawAliasEnts_Opaque ();              // alias models: monsters/items/weapon
 	PVR_DrawWorld_WaterOpaque (cl.worldmodel);// world opaque liquid
 
 	// --- TR: translucent + additive overlays ---
+	PVR_DrawWorld_SkyAlpha (cl.worldmodel);   // scrolling cloud alpha layer (slow sky)
 	PVR_DrawWorld_WaterTrans (cl.worldmodel); // world translucent liquid
 	PVR_DrawWorld_Fullbright (cl.worldmodel); // world glow/luma maps
 	PVR_DrawBrushEnts_Fullbright ();          // brush ents: glow
 	PVR_DrawAliasEnts_Translucent ();         // alias models: entity-alpha blends
 	PVR_DrawAliasEnts_Fullbright ();          // alias models: additive luma overlay
+	R_DrawParticles ();                       // particle billboards (blended)
+	PVR_DrawViewBlend ();                     // fullscreen damage/pickup/underwater tint
 
 	// --- PT: alpha-tested cutouts (with the 2D HUD, which renders last) ---
 	PVR_DrawAliasEnts_Holey ();               // alias models: MF_HOLEY cutouts
+	PVR_DrawSpriteEnts ();                    // sprite models: explosions/pickups
 	PVR_DrawWorld_Fence (cl.worldmodel);      // fence/grate surfaces
 	return;
 #endif
