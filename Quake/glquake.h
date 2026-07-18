@@ -440,9 +440,12 @@ void PVR_DrawWorld_Water (qmodel_t *model);
 void PVR_DrawWorld_WaterOpaque (qmodel_t *model);
 void PVR_DrawWorld_WaterTrans (qmodel_t *model);
 void PVR_DrawWorld_Fence (qmodel_t *model);
-// sky (pvr_warp.c): fast = flat skyflatcolor; slow = solidsky (OP) + alphasky (TR)
+// sky (pvr_warp.c): fast = flat skyflatcolor; slow = solidsky (OP) + alphasky (TR);
+// skybox = 6 gfx/env/ faces when skybox_name is set
 extern float skyflatcolor[3];
 extern struct gltexture_s *solidskytexture, *alphaskytexture;
+extern struct gltexture_s *skybox_textures[6];
+extern char skybox_name[1024];
 extern cvar_t r_fastsky;
 void PVR_DrawWorld_Sky (qmodel_t *model);
 void PVR_DrawWorld_SkyAlpha (qmodel_t *model);
@@ -457,6 +460,7 @@ void PVR_DrawBrushEnts_Fullbright (void);
 #define PVR_ALIAS_HOLEY		1	// PT list, alpha-tested cutout (MF_HOLEY)
 #define PVR_ALIAS_TRANS		2	// TR list, entity-alpha blend
 #define PVR_ALIAS_GLOW		3	// TR list, additive fullbright/luma skin overlay
+#define PVR_ALIAS_SHADOW	4	// TR list, flattened translucent black blob shadow
 // View-weapon depth bias: the PVR W-buffer stores 1/w (nearer == larger). Near-
 // clipped world geometry maxes out at 1/NEARCLIP == 0.25, and the 2D HUD/UI layer
 // submits at z == 1.0. The view weapon belongs BETWEEN them: adding this to its
@@ -467,12 +471,15 @@ void PVR_DrawBrushEnts_Fullbright (void);
 #define PVR_VIEWMODEL_DEPTH_BIAS	0.5f
 extern float pvr_depth_bias;		// added to each submitted vertex's 1/w (0 normally)
 void PVR_SetupAliasMatrices (vec3_t origin, vec3_t angles, unsigned char scale, vec3_t hdr_scale, vec3_t hdr_scale_origin, float fovscale);
+void PVR_SetupAliasShadowMatrices (vec3_t origin, vec3_t angles, vec3_t hdr_scale, vec3_t hdr_scale_origin, float lheight);
 void PVR_SubmitAliasFrame (const float *pos, const float *st, const uint32_t *argb, const unsigned short *idx, int numverts, int numtris, struct gltexture_s *tx, int passkind);
 void PVR_DrawAliasModel (entity_t *e, int passkind);
+void PVR_DrawAliasShadow (entity_t *e);
 void PVR_DrawAliasEnts_Opaque (void);
 void PVR_DrawAliasEnts_Holey (void);
 void PVR_DrawAliasEnts_Translucent (void);
 void PVR_DrawAliasEnts_Fullbright (void);
+void PVR_DrawAliasEnts_Shadows (void);
 
 // world-space billboards -- particles (r_part.c) and sprite models (r_sprite.c)
 #define PVR_BILLBOARD_TR	0	// TR list, blended, no depth write (particles)

@@ -32,6 +32,7 @@ alpha surfaces and brush-model entities are still TODO.
 
 extern int	d_lightstylevalue[256];	// 8.8 lightstyle intensities (gl_rmain.c)
 extern cvar_t	gl_fullbrights;		// r_world.c toggle for the glow pass
+extern cvar_t	gl_overbright;		// 2x lighting boost (single-pass approximation)
 
 // Apply per-vertex dynamic lights this pass. Only the world model has its
 // surfaces marked by R_PushDlights (R_MarkLights walks cl.worldmodel->nodes) and
@@ -94,7 +95,7 @@ static void PVR_AddDynamicLightsVertex (msurface_t *surf, const float *v,
 static uint32_t PVR_LightVertex (msurface_t *surf, const float *v)
 {
 	mtexinfo_t	*tex;
-	int		smax, tmax, size, ls, lt, maps, r, g, b;
+	int		smax, tmax, size, ls, lt, maps, r, g, b, sh;
 	float		s, t;
 	unsigned	racc, gacc, bacc;
 
@@ -124,9 +125,14 @@ static uint32_t PVR_LightVertex (msurface_t *surf, const float *v)
 	if (pvr_vertex_dlights && surf->dlightframe == r_framecount)
 		PVR_AddDynamicLightsVertex (surf, v, &racc, &gacc, &bacc);
 
-	r = (int)(racc >> 7); if (r > 255) r = 255;	// 8.8 -> [0,255], single MODULATE pass
-	g = (int)(gacc >> 7); if (g > 255) g = 255;
-	b = (int)(bacc >> 7); if (b > 255) b = 255;
+	// gl_overbright doubles the lighting (>>6 instead of >>7). The PVR has no
+	// hardware 2x-modulate, so this is a single-pass boost with clamp rather than
+	// true per-texel overbright (bright areas saturate instead of exceeding the
+	// texture), but it gives the brighter overbright look for free.
+	sh = gl_overbright.value ? 6 : 7;
+	r = (int)(racc >> sh); if (r > 255) r = 255;
+	g = (int)(gacc >> sh); if (g > 255) g = 255;
+	b = (int)(bacc >> sh); if (b > 255) b = 255;
 
 	return 0xff000000u | ((unsigned)r << 16) | ((unsigned)g << 8) | (unsigned)b;
 }

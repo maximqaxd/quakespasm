@@ -85,6 +85,10 @@ void PVR_SubmitAliasFrame (const float *pos, const float *st, const uint32_t *ar
 	case PVR_ALIAS_GLOW:	// additive fullbright/luma overlay (glowing eyes, laser)
 		list = PVR_LIST_TR_POLY; sblend = GL_ONE; dblend = GL_ONE; env = GL_MODULATE;
 		break;
+	case PVR_ALIAS_SHADOW:	// flattened blob shadow (untextured black, tx == NULL)
+		list = PVR_LIST_TR_POLY; sblend = GL_SRC_ALPHA; dblend = GL_ONE_MINUS_SRC_ALPHA;
+		env = GL_MODULATE;
+		break;
 	default:		// opaque
 		list = PVR_LIST_OP_POLY; sblend = GL_ONE; dblend = GL_ZERO; env = GL_MODULATE;
 		break;

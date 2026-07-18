@@ -62,7 +62,7 @@ cvar_t	r_speeds = {"r_speeds","0",CVAR_NONE};
 cvar_t	r_pos = {"r_pos","0",CVAR_NONE};
 cvar_t	r_fullbright = {"r_fullbright","0",CVAR_NONE};
 cvar_t	r_lightmap = {"r_lightmap","0",CVAR_NONE};
-cvar_t	r_shadows = {"r_shadows","0",CVAR_ARCHIVE};
+cvar_t	r_shadows = {"r_shadows","1",CVAR_ARCHIVE};
 cvar_t	r_wateralpha = {"r_wateralpha","1",CVAR_ARCHIVE};
 cvar_t	r_litwater = {"r_litwater","1",CVAR_NONE};
 cvar_t	r_dynamic = {"r_dynamic","1",CVAR_ARCHIVE};
@@ -87,13 +87,13 @@ cvar_t	r_flatlightstyles = {"r_flatlightstyles", "0", CVAR_NONE};
 cvar_t	gl_fullbrights = {"gl_fullbrights", "1", CVAR_ARCHIVE};
 cvar_t	gl_farclip = {"gl_farclip", "65536", CVAR_ARCHIVE};
 #if defined(PLATFORM_DREAMCAST)
-cvar_t	gl_overbright = {"gl_overbright", "0", CVAR_ARCHIVE};
+cvar_t	gl_overbright = {"gl_overbright", "1", CVAR_ARCHIVE};
 #else
 cvar_t	gl_overbright = {"gl_overbright", "1", CVAR_ARCHIVE};
 #endif
 #if defined(PLATFORM_DREAMCAST)
 // maximqad -- 0 keeps R_DrawAliasModel on the single-pass batched drawer.
-cvar_t	gl_overbright_models = {"gl_overbright_models", "0", CVAR_ARCHIVE};
+cvar_t	gl_overbright_models = {"gl_overbright_models", "1", CVAR_ARCHIVE};
 #else
 cvar_t	gl_overbright_models = {"gl_overbright_models", "1", CVAR_ARCHIVE};
 #endif
@@ -847,6 +847,25 @@ void PVR_DrawAliasEnts_Fullbright (void)
 	}
 }
 
+// Blob shadows under alias entities (r_shadows), flattened onto the floor into
+// the TR list. Off by default; no stencil, so overlaps double-darken slightly.
+void PVR_DrawAliasEnts_Shadows (void)
+{
+	int	i;
+
+	if (!r_shadows.value || !r_drawentities.value)
+		return;
+	for (i = 0; i < cl_numvisedicts; i++)
+	{
+		entity_t *e = cl_visedicts[i];
+		if (!e->model || e->model->type != mod_alias)
+			continue;
+		if (e == &cl.viewent)
+			continue;
+		PVR_DrawAliasShadow (e);
+	}
+}
+
 // Sprite-model entities (explosions, ammo/health boxes, flames): camera-facing
 // alpha-tested quads in the PT phase. R_DrawSpriteModel builds the billboard; the
 // batch's list/state is opened once here.
@@ -1148,6 +1167,7 @@ void R_RenderScene (void)
 	PVR_DrawBrushEnts_Fullbright ();          // brush ents: glow
 	PVR_DrawAliasEnts_Translucent ();         // alias models: entity-alpha blends
 	PVR_DrawAliasEnts_Fullbright ();          // alias models: additive luma overlay
+	PVR_DrawAliasEnts_Shadows ();             // blob shadows under alias models (r_shadows)
 	R_DrawParticles ();                       // particle billboards (blended)
 	PVR_DrawViewBlend ();                     // fullscreen damage/pickup/underwater tint
 

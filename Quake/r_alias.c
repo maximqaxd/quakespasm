@@ -1042,7 +1042,7 @@ void PVR_DrawAliasModel (entity_t *e, int passkind)
 	if (paliashdr->poseverts > MAXALIASVERTS)
 		return;			// too many verts for the DC scratch buffers
 
-	overbright = false;		// gl_overbright_models is 0 on DC (single lit pass)
+	overbright = !!gl_overbright_models.value;	// R_SetupAliasLighting clamps lightcolor when set
 	shading = true;
 	R_SetupAliasLighting (e);	// fills lightcolor + shadedots
 
@@ -1127,10 +1127,13 @@ void PVR_DrawAliasModel (entity_t *e, int passkind)
 			float	l = dolerp
 				? shadedots[va->lightnormalindex] * ibl + shadedots[(pv2 + j)->lightnormalindex] * bl
 				: shadedots[va->lightnormalindex];
+			// gl_overbright_models doubles the light (R_SetupAliasLighting already
+			// clamped lightcolor for the overbright range); PVR has no hw 2x-modulate.
+			float	ob = overbright ? 2.0f : 1.0f;
 			int	r, g, b;
-			r = (int)(l * lightcolor[0] * 255.0f); if (r > 255) r = 255; else if (r < 0) r = 0;
-			g = (int)(l * lightcolor[1] * 255.0f); if (g > 255) g = 255; else if (g < 0) g = 0;
-			b = (int)(l * lightcolor[2] * 255.0f); if (b > 255) b = 255; else if (b < 0) b = 0;
+			r = (int)(l * lightcolor[0] * ob * 255.0f); if (r > 255) r = 255; else if (r < 0) r = 0;
+			g = (int)(l * lightcolor[1] * ob * 255.0f); if (g > 255) g = 255; else if (g < 0) g = 0;
+			b = (int)(l * lightcolor[2] * ob * 255.0f); if (b > 255) b = 255; else if (b < 0) b = 0;
 			dc_argbbuf[j] = ((uint32_t)a8 << 24) | ((uint32_t)r << 16) | ((uint32_t)g << 8) | (uint32_t)b;
 		}
 	}
@@ -1151,6 +1154,103 @@ void PVR_DrawAliasModel (entity_t *e, int passkind)
 
 	rs_aliaspolys += paliashdr->numtris;
 	rs_aliaspasses += paliashdr->numtris;
+}
+
+/*
+=================
+PVR_DrawAliasShadow -- flattened blob shadow for an alias entity (maximqad)
+
+The PVR analog of GL_DrawAliasShadow: project the model onto the floor with the
+shadow matrix (PVR_SetupAliasShadowMatrices) and submit its triangles as flat
+translucent black into the TR list (untextured -> pvr_context's color path,
+which the TR list blends). No stencil, so overlapping triangles double-darken
+slightly -- fine for a blob shadow, and r_shadows is off by default anyway.
+=================
+*/
+void PVR_DrawAliasShadow (entity_t *e)
+{
+	extern vec3_t		lightspot;
+	aliashdr_t		*paliashdr;
+	lerpdata_t		lerpdata;
+	int			nverts, j, a8;
+	trivertx_t		*pv1, *pv2;
+	qboolean		dolerp;
+	float			bl, lheight;
+	const float		*st;
+	const unsigned short	*idx;
+	uint32_t		shadowcol;
+
+	currententity = e;
+	if (e == &cl.viewent)
+		return;
+
+	paliashdr = (aliashdr_t *)Mod_Extradata (e->model);
+	R_SetupAliasFrame (paliashdr, e->frame, &lerpdata);
+	R_SetupEntityTransform (e, &lerpdata);
+
+	if (R_CullModelForEntity (e))
+		return;
+	if (e->model->flags & MOD_NOSHADOW)
+		return;
+
+	entalpha = ENTALPHA_DECODE (e->alpha);
+	if (entalpha == 0)
+		return;
+	if (paliashdr->poseverts > MAXALIASVERTS)
+		return;
+
+	R_LightPoint (e->origin);		// fills lightspot
+	lheight = e->origin[2] - lightspot[2];
+
+	nverts = paliashdr->poseverts;
+	pv1 = (trivertx_t *)((byte *)paliashdr + paliashdr->posedata) + lerpdata.pose1 * nverts;
+	dolerp = (lerpdata.pose1 != lerpdata.pose2);
+	if (dolerp)
+	{
+		pv2 = (trivertx_t *)((byte *)paliashdr + paliashdr->posedata) + lerpdata.pose2 * nverts;
+		bl = lerpdata.blend;
+	}
+	else
+	{
+		pv2 = pv1;
+		bl = 0.0f;
+	}
+
+	a8 = (int)(entalpha * 0.5f * 255.0f);		// GL uses entalpha * 0.5
+	if (a8 > 255) a8 = 255; else if (a8 < 0) a8 = 0;
+	shadowcol = (uint32_t)a8 << 24;			// black rgb, shadow alpha
+
+	for (j = 0; j < nverts; j++)
+	{
+		trivertx_t	*va = pv1 + j;
+		float		px, py, pz;
+
+		if (dolerp)
+		{
+			trivertx_t	*vb = pv2 + j;
+			shz_vec3_t	A = shz_vec3_init (va->v[0], va->v[1], va->v[2]);
+			shz_vec3_t	B = shz_vec3_init (vb->v[0], vb->v[1], vb->v[2]);
+			shz_vec3_t	P = shz_vec3_lerp (A, B, bl);
+			px = P.x; py = P.y; pz = P.z;
+		}
+		else
+		{
+			px = va->v[0]; py = va->v[1]; pz = va->v[2];
+		}
+		dc_posbuf[j * 3 + 0] = px;
+		dc_posbuf[j * 3 + 1] = py;
+		dc_posbuf[j * 3 + 2] = pz;
+		dc_argbbuf[j] = shadowcol;
+	}
+
+	st  = (const float *)((byte *)paliashdr + paliashdr->st_dc);
+	idx = (const unsigned short *)((byte *)paliashdr + paliashdr->idx_dc);
+
+	PVR_SetupAliasShadowMatrices (lerpdata.origin, lerpdata.angles,
+				      paliashdr->scale, paliashdr->scale_origin, lheight);
+	PVR_SubmitAliasFrame (dc_posbuf, st, dc_argbbuf, idx, nverts, paliashdr->numtris,
+			      NULL, PVR_ALIAS_SHADOW);
+	PVR_RestoreWorldMatrix ();
 }
 #endif	/* PLATFORM_DREAMCAST && USE_PVR_RENDER */
 

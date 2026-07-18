@@ -42,9 +42,13 @@ static float	skyflatcolor[3];
 #endif
 static float	skymins[2][6], skymaxs[2][6];
 
+#if defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER)
+char	skybox_name[1024]; //name of current skybox, or "" if no skybox -- exposed for PVR
+gltexture_t	*skybox_textures[6];
+#else
 static char	skybox_name[1024]; //name of current skybox, or "" if no skybox
-
 static gltexture_t	*skybox_textures[6];
+#endif
 #if defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER)
 gltexture_t	*solidskytexture, *alphaskytexture;	// exposed for the PVR sky pass
 #else

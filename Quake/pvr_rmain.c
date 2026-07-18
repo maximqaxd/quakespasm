@@ -62,8 +62,13 @@ void PVR_SetupGLMatrices (int scale)
 	//  isn't baked in yet, so a shrunk viewsize would render top-left-anchored.)
 	float	vw = (float)r_refdef.vrect.width;
 	float	vh = (float)r_refdef.vrect.height;
-	float	aspect  = vw / vh;
 	float	fovy_rad = r_fovy * (float)M_PI / 180.0f;
+	// Aspect from the render fovs, not the fixed vrect ratio: it equals
+	// vrect.width/vrect.height in the normal case, but when r_waterwarp wobbles
+	// r_fovx/r_fovy independently underwater this tracks R_SetFrustum(r_fovx,r_fovy)
+	// -- giving the classic underwater screen warp for free.
+	float	aspect = tanf (r_fovx * (0.5f * (float)M_PI / 180.0f))
+		       / tanf (r_fovy * (0.5f * (float)M_PI / 180.0f));
 
 	(void)scale;	// r_scale downsampling not applied on the PVR path
 
@@ -129,6 +134,46 @@ void PVR_SetupAliasMatrices (vec3_t origin, vec3_t angles, unsigned char scale,
 	PVR_SetupEntityMatrices (origin, angles, scale);
 	shz_xmtrx_translate (hdr_scale_origin[0], hdr_scale_origin[1] * fovscale, hdr_scale_origin[2] * fovscale);
 	shz_xmtrx_scale (hdr_scale[0], hdr_scale[1] * fovscale, hdr_scale[2] * fovscale);
+}
+
+/*
+==============
+PVR_SetupAliasShadowMatrices -- entity MVP that flattens the model onto the floor
+
+Mirrors GL_DrawAliasShadow's matrix chain: translate to the entity, drop to the
+light plane, apply the skew/flatten shadow matrix, come back up, then the entity
+rotation and the byte-vertex decode (scale_origin + scale). No entity scale, like
+the GL path. lheight is origin.z - lightspot.z. The alias byte positions then
+project straight to a blob on the floor through the XMTRX ftrv.
+==============
+*/
+#define SHADOW_SKEW_X	-0.7f	/* match r_alias.c GL_DrawAliasShadow */
+#define SHADOW_SKEW_Y	 0.0f
+#define SHADOW_VSCALE	 0.0f	/* 0 == completely flat */
+#define SHADOW_HEIGHT	 0.1f	/* lift off the floor to avoid z-fighting */
+
+void PVR_SetupAliasShadowMatrices (vec3_t origin, vec3_t angles, vec3_t hdr_scale,
+				   vec3_t hdr_scale_origin, float lheight)
+{
+	// column-major (glMultMatrixf layout), same constant as GL_DrawAliasShadow
+	static const float shadowmatrix[16] =
+	{
+		1.0f,          0.0f,          0.0f,          0.0f,
+		0.0f,          1.0f,          0.0f,          0.0f,
+		SHADOW_SKEW_X, SHADOW_SKEW_Y, SHADOW_VSCALE, 0.0f,
+		0.0f,          0.0f,          SHADOW_HEIGHT, 1.0f
+	};
+
+	shz_xmtrx_load_4x4 (&pvr_world_mvp);
+	shz_xmtrx_translate (origin[0], origin[1], origin[2]);
+	shz_xmtrx_translate (0.0f, 0.0f, -lheight);
+	shz_xmtrx_apply_unaligned_4x4 (shadowmatrix);
+	shz_xmtrx_translate (0.0f, 0.0f, lheight);
+	shz_xmtrx_rotate_z (DEG2RAD_F ( angles[1]));
+	shz_xmtrx_rotate_y (DEG2RAD_F (-angles[0]));
+	shz_xmtrx_rotate_x (DEG2RAD_F ( angles[2]));
+	shz_xmtrx_translate (hdr_scale_origin[0], hdr_scale_origin[1], hdr_scale_origin[2]);
+	shz_xmtrx_scale (hdr_scale[0], hdr_scale[1], hdr_scale[2]);
 }
 
 void PVR_RestoreWorldMatrix (void)

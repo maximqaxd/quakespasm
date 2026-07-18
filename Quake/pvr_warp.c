@@ -227,10 +227,84 @@ static void PVR_DrawSkyChains (qmodel_t *model, int mode, uint32_t flatcol)
 	}
 }
 
-// OP pass: fast -> flat skyflatcolor; slow -> opaque solidsky layer.
+//------------------------------------------------------------------------------
+// Skybox: 6 gfx/env/ faces (when skybox_name is set), a farclip-sized cube
+// centered on the eye, drawn opaque in the OP list. Vertex/texcoord math mirrors
+// gl_sky.c Sky_EmitSkyBoxVertex; corners are the full [-1,1] face (the tjunction
+// hack). World geometry draws over it; the sky-marked surfaces are skipped, so
+// the box shows through them.
+//------------------------------------------------------------------------------
+extern cvar_t	gl_farclip;
+
+static const int pvr_skytexorder[6] = { 0, 2, 1, 3, 4, 5 };
+static const int pvr_st_to_vec[6][3] =
+{
+	{ 3, -1, 2 }, { -3, 1, 2 }, { 1, 3, 2 }, { -1, -3, 2 }, { -2, -1, 3 }, { 2, -1, -3 }
+};
+
+static void PVR_SkyBoxVert (float s, float t, int axis, float *out)
+{
+	vec3_t	b;
+	int	j, k;
+	float	fc = gl_farclip.value / 1.7320508f;	// / sqrt(3)
+
+	b[0] = s * fc;
+	b[1] = t * fc;
+	b[2] = fc;
+	for (j = 0; j < 3; j++)
+	{
+		k = pvr_st_to_vec[axis][j];
+		out[j] = (k < 0) ? -b[-k - 1] : b[k - 1];
+		out[j] += r_origin[j];
+	}
+}
+
+static void PVR_DrawSkybox (void)
+{
+	int	i;
+
+	PVR_ListBegin (PVR_LIST_OP_POLY);
+	PVR_SetBlend (GL_ONE, GL_ZERO);
+	PVR_SetTexEnv (GL_MODULATE);		// white vertex color -> texel straight
+	PVR_RestoreWorldMatrix ();		// faces are world-space
+
+	for (i = 0; i < 6; i++)
+	{
+		gltexture_t	*tex = skybox_textures[pvr_skytexorder[i]];
+		float		v0[3], v1[3], v2[3], v3[3], w, h, slo, shi, tlo, thi;
+
+		if (!tex)
+			continue;
+		w = (float)tex->width;
+		h = (float)tex->height;
+
+		PVR_SkyBoxVert (-1, -1, i, v0);
+		PVR_SkyBoxVert (-1,  1, i, v1);
+		PVR_SkyBoxVert ( 1,  1, i, v2);
+		PVR_SkyBoxVert ( 1, -1, i, v3);
+
+		slo = 0.5f / w;			// s=-1 -> 0, with half-texel border
+		shi = (w - 0.5f) / w;		// s=+1 -> 1
+		tlo = 1.0f - 0.5f / h;		// t=-1 (flipped)
+		thi = 0.5f / h;			// t=+1 (flipped)
+
+		PVR_BillboardQuad (tex, v0, v1, v2, v3,
+				   slo, tlo, slo, thi, shi, thi, shi, tlo, 0xffffffffu);
+	}
+}
+
+// OP pass: skybox if set; else fast -> flat skyflatcolor / slow -> solidsky layer.
 void PVR_DrawWorld_Sky (qmodel_t *model)
 {
-	qboolean	fast = (r_fastsky.value != 0.0f) || !solidskytexture;
+	qboolean	fast;
+
+	if (skybox_name[0])
+	{
+		PVR_DrawSkybox ();
+		return;
+	}
+
+	fast = (r_fastsky.value != 0.0f) || !solidskytexture;
 
 	PVR_ListBegin (PVR_LIST_OP_POLY);
 	PVR_SetBlend (GL_ONE, GL_ZERO);
@@ -262,6 +336,8 @@ void PVR_DrawWorld_Sky (qmodel_t *model)
 // TR pass: slow only -- the transparent alphasky layer scrolled over the solid.
 void PVR_DrawWorld_SkyAlpha (qmodel_t *model)
 {
+	if (skybox_name[0])			// skybox has no scrolling alpha layer
+		return;
 	if (r_fastsky.value != 0.0f || !solidskytexture || !alphaskytexture)
 		return;
 
