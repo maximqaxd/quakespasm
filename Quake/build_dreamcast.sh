@@ -23,7 +23,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 TARGET_ELF="quakespasm.elf"
-TARGET_CDI="quakespasm.cdi"
+# The bootable disc image is written next to the game data, at Dreamcast/.
+TARGET_CDI="../Dreamcast/quakespasm.cdi"
 # Disc data (id1/ with pak files + music) lives at <repo root>/Dreamcast/cd.
 # The script runs from Quake/, so reach it one level up.
 DATA_DIR="../Dreamcast/cd"

@@ -2,7 +2,7 @@
 Quake/*.o
 Quake/quakespasm.elf
 Quake/quakespasm.stripped.elf
-Quake/quakespasm.cdi
+Dreamcast/quakespasm.cdi
 
 # Copyrighted game data -- never commit (the disc data lives in Dreamcast/cd)
 *.pak
