@@ -1,8 +1,19 @@
 # Dreamcast build artifacts
 Quake/*.o
+Quake/*.d
 Quake/quakespasm.elf
 Quake/quakespasm.stripped.elf
 Dreamcast/quakespasm.cdi
+
+# Native/host build output (Linux/macOS server, runtime files)
+Quake/quakespasm
+Quake/history.txt
+
+# Visual Studio build output
+Windows/VisualStudio/.vs/
+Windows/VisualStudio/Build-quakespasm/
+Windows/VisualStudio/Build-quakespasm-sdl2/
+Windows/VisualStudio/*.vcxproj.user
 
 # Copyrighted game data -- never commit (the disc data lives in Dreamcast/cd)
 *.pak
@@ -11,6 +22,3 @@ Dreamcast/cd/id1/music/
 
 # Agent / editor state
 .claude/
-
-# stray working dir
-/cd/
