@@ -308,6 +308,7 @@ typedef struct
 
 typedef struct
 {
+	int			sequence;	// which server frame this snapshot is
 	int			num_entities;
 	qw_entity_state_t	entities[QW_MAX_PACKET_ENTITIES];
 } qw_packet_entities_t;
@@ -342,6 +343,7 @@ void	CLQW_ClearEntities (void);		// wipe snapshot/baseline state
 void	CLQW_FindModelNumbers (void);		// resolve qw_*index from precache
 void	CLQW_ParseBaseline (int num);		// into qw_baselines[num]
 void	CLQW_ParsePacketEntities (qboolean delta);
+int	CLQW_DeltaSequence (void);		// snapshot to request deltas from, -1 = none
 void	CLQW_ParseProjectiles (void);		// svc_nails
 void	CLQW_ClearProjectiles (void);
 void	CLQW_EmitEntities (void);		// build cl_visedicts for this frame

@@ -186,6 +186,52 @@ static void CLQW_ParseDelta (qw_entity_state_t *from, qw_entity_state_t *to, int
 
 /*
 ==================
+CLQW_DeltaSequence -- the newest snapshot we can safely ask the server to delta
+against (sent as clc_delta with each move), or -1 to request a full update.
+==================
+*/
+int CLQW_DeltaSequence (void)
+{
+	if (!qw_have_snap)
+		return -1;
+	if (cls.netchan.incoming_sequence - qw_snap_seq >= QW_UPDATE_BACKUP - 1)
+		return -1;	// so old its ring slot may have been reused
+	return qw_snap_seq;
+}
+
+/*
+=================
+CLQW_FlushEntityPacket -- the delta references a frame we no longer hold: read
+the update to keep the stream in sync but throw it away, and stop requesting
+deltas so the server sends a fresh full update.
+=================
+*/
+static void CLQW_FlushEntityPacket (void)
+{
+	int			word;
+	qw_entity_state_t	olde, newe;
+
+	Con_DPrintf ("[QW] FlushEntityPacket\n");
+	memset (&olde, 0, sizeof(olde));
+	qw_have_snap = false;
+
+	for (;;)
+	{
+		word = (unsigned short) MSG_ReadShort ();
+		if (msg_badread)
+		{
+			Con_Printf ("[QW] bad packetentities\n");
+			CL_Disconnect ();
+			return;
+		}
+		if (!word)
+			break;
+		CLQW_ParseDelta (&olde, &newe, word);
+	}
+}
+
+/*
+==================
 CLQW_ParsePacketEntities -- merge the incoming delta against the previous frame
 into a fresh snapshot. Entities are transmitted in ascending number order, which
 lets a single pass copy-forward unchanged ones, insert new ones from baseline,
@@ -205,8 +251,21 @@ void CLQW_ParsePacketEntities (qboolean delta)
 
 	if (delta)
 	{
-		oldpacket = MSG_ReadByte () & QW_UPDATE_MASK;
-		oldp = &qw_snapshots[oldpacket];
+		int	from = MSG_ReadByte ();
+
+		// the byte echoes the low bits of the frame we asked to delta from;
+		// rebuild the full sequence relative to the current one and make sure
+		// that frame is still in the ring
+		oldpacket = cls.netchan.incoming_sequence -
+			((cls.netchan.incoming_sequence - from) & 0xff);
+		oldp = &qw_snapshots[oldpacket & QW_UPDATE_MASK];
+
+		if (oldp->sequence != oldpacket ||
+			cls.netchan.incoming_sequence - oldpacket >= QW_UPDATE_BACKUP - 1)
+		{
+			CLQW_FlushEntityPacket ();
+			return;
+		}
 		full = false;
 	}
 	else
@@ -275,6 +334,7 @@ void CLQW_ParsePacketEntities (qboolean delta)
 	}
 
 	newp->num_entities = newindex;
+	newp->sequence = cls.netchan.incoming_sequence;
 	qw_snap_seq = cls.netchan.incoming_sequence;
 	qw_have_snap = true;
 }

@@ -144,6 +144,16 @@ void CLQW_SendMove (void)
 	buf.data[checksumIndex] = COM_BlockSequenceCRCByte (
 		buf.data + checksumIndex + 1, buf.cursize - checksumIndex - 1, seq);
 
+	// ask the server to delta the next packetentities from the newest snapshot
+	// we hold -- updates shrink to just what changed. Without a valid snapshot
+	// the request is omitted and the server sends full frames.
+	i = CLQW_DeltaSequence ();
+	if (i >= 0)
+	{
+		MSG_WriteByte (&buf, qwclc_delta);
+		MSG_WriteByte (&buf, i & 255);
+	}
+
 	QWNetchan_Transmit (&cls.netchan, buf.cursize, buf.data);
 }
 

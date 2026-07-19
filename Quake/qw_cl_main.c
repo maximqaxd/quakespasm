@@ -187,7 +187,10 @@ void CLQW_RunConnection (void)
 
 	// NetQuake advances cl.time in CL_ReadFromServer, which the QW pump replaces;
 	// drive it here so temp-entity beams expire, dynamic lights decay and bonus
-	// items keep rotating. (No interpolation yet, so realtime is close enough.)
+	// items keep rotating. cl.oldtime must track it too -- the particle sim runs
+	// on (cl.time - cl.oldtime), and without it every burst aged a whole session
+	// in one frame and vanished instantly.
+	cl.oldtime = cl.time;
 	cl.time = realtime;
 
 	CLQW_CheckForResend ();
