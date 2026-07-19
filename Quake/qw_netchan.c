@@ -27,6 +27,8 @@ static cvar_t	qw_showpackets = {"qw_showpackets", "0", CVAR_NONE};
 static cvar_t	qw_showdrop    = {"qw_showdrop", "0", CVAR_NONE};
 cvar_t		qw_qport       = {"qport", "0", CVAR_NONE};
 
+static double	QWNetchan_Rate (void);	// seconds-per-byte send budget from "rate"
+
 /*
 ===============
 QWNetchan_Init -- register cvars and pick a random qport
@@ -97,14 +99,33 @@ void QWNetchan_Setup (qw_netchan_t *chan, qw_netadr_t adr, int qport)
 	chan->message.maxsize = sizeof(chan->message_buf);
 
 	chan->qport = qport;
-	chan->rate = 1.0 / 2500;
+	chan->rate = QWNetchan_Rate ();
 }
 
 #define	QW_MAX_BACKUP	200
 
+/*
+==============
+QWNetchan_Rate -- seconds-per-byte send budget, taken live from the "rate" cvar
+(clamped) rather than a fixed 2500 B/s. Reading it every call lets a rate change
+(e.g. the Setup-menu presets: modem 2500, BBA/W5500 higher) take effect at once.
+Pinning it to modem speed throttled broadcast adapters to ~25 packets/s, which is
+what starved movement and forced constant entity-packet flushes at high ping.
+==============
+*/
+static double QWNetchan_Rate (void)
+{
+	extern cvar_t	qw_rate;
+	double		r = qw_rate.value;
+
+	if (r < 500)	r = 500;
+	if (r > 100000)	r = 100000;
+	return 1.0 / r;
+}
+
 qboolean QWNetchan_CanPacket (qw_netchan_t *chan)
 {
-	return (chan->cleartime < realtime + QW_MAX_BACKUP * chan->rate);
+	return (chan->cleartime < realtime + QW_MAX_BACKUP * QWNetchan_Rate ());
 }
 
 qboolean QWNetchan_CanReliable (qw_netchan_t *chan)
@@ -184,9 +205,9 @@ void QWNetchan_Transmit (qw_netchan_t *chan, int length, byte *data)
 	QWNET_SendPacket (send.cursize, send.data, chan->remote_address);
 
 	if (chan->cleartime < realtime)
-		chan->cleartime = realtime + send.cursize * chan->rate;
+		chan->cleartime = realtime + send.cursize * QWNetchan_Rate ();
 	else
-		chan->cleartime += send.cursize * chan->rate;
+		chan->cleartime += send.cursize * QWNetchan_Rate ();
 
 	if (qw_showpackets.value)
 		Con_Printf ("--> s=%i(%i) a=%i(%i) %i\n", chan->outgoing_sequence,

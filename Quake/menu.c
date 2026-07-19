@@ -710,9 +710,6 @@ void M_MultiPlayer_Key (int key)
 //=============================================================================
 /* SETUP MENU */
 
-int		setup_cursor = 4;
-int		setup_cursor_table[] = {40, 56, 80, 104, 140};
-
 char	setup_hostname[16];
 char	setup_myname[16];
 int		setup_oldtop;
@@ -720,7 +717,49 @@ int		setup_oldbottom;
 int		setup_top;
 int		setup_bottom;
 
+#if defined(USE_QW_PROTOCOL)
+// A "Connection" row (QuakeWorld send-rate preset) sits between Pants color and
+// Accept. The presets match the DC's network adapters -- the modem needs a low
+// rate, the wired adapters can push much more (this is the "rate" the client
+// asks the server to send at, and its own send throttle -- see QWNetchan_Rate).
+static const struct { const char *name; int rate; } setup_rates[] =
+{
+	{ "Modem", 2500 },
+	{ "BBA",   10000 },
+	{ "W5500", 25000 },
+};
+#define	NUM_SETUP_RATES	((int)(sizeof(setup_rates)/sizeof(setup_rates[0])))
+#define	SETUP_RATE_ROW	4
+#define	NUM_SETUP_CMDS	6
+int		setup_cursor = 5;
+// Connection + Accept sit below the player-model box (which overlaps y<=136).
+int		setup_cursor_table[] = {40, 56, 80, 104, 148, 164};
+
+extern cvar_t	qw_rate;
+
+static int Setup_RateIndex (void)
+{
+	int	i, best = 0, bestd = 0x7fffffff, r = (int)qw_rate.value;
+	for (i = 0; i < NUM_SETUP_RATES; i++)
+	{
+		int d = abs (r - setup_rates[i].rate);
+		if (d < bestd) { bestd = d; best = i; }
+	}
+	return best;
+}
+
+static void Setup_CycleRate (int dir)
+{
+	int	i = Setup_RateIndex () + dir;
+	if (i < 0)			i = NUM_SETUP_RATES - 1;
+	if (i >= NUM_SETUP_RATES)	i = 0;
+	Cvar_SetValue ("rate", (float)setup_rates[i].rate);
+}
+#else
 #define	NUM_SETUP_CMDS	5
+int		setup_cursor = 4;
+int		setup_cursor_table[] = {40, 56, 80, 104, 140};
+#endif
 
 void M_Menu_Setup_f (void)
 {
@@ -754,8 +793,16 @@ void M_Setup_Draw (void)
 	M_Print (64, 80, "Shirt color");
 	M_Print (64, 104, "Pants color");
 
+#if defined(USE_QW_PROTOCOL)
+	M_Print (64, 148, "Connection");
+	M_Print (184, 148, setup_rates[Setup_RateIndex ()].name);
+
+	M_DrawTextBox (64, 164-8, 14, 1);
+	M_Print (72, 164, "Accept Changes");
+#else
 	M_DrawTextBox (64, 140-8, 14, 1);
 	M_Print (72, 140, "Accept Changes");
+#endif
 
 	p = Draw_CachePic ("gfx/bigbox.lmp");
 	M_DrawTransPic (160, 64, p);
@@ -803,6 +850,10 @@ void M_Setup_Key (int k)
 			setup_top = setup_top - 1;
 		if (setup_cursor == 3)
 			setup_bottom = setup_bottom - 1;
+#if defined(USE_QW_PROTOCOL)
+		if (setup_cursor == SETUP_RATE_ROW)
+			Setup_CycleRate (-1);
+#endif
 		break;
 	case K_RIGHTARROW:
 		if (setup_cursor < 2)
@@ -813,6 +864,10 @@ forward:
 			setup_top = setup_top + 1;
 		if (setup_cursor == 3)
 			setup_bottom = setup_bottom + 1;
+#if defined(USE_QW_PROTOCOL)
+		if (setup_cursor == SETUP_RATE_ROW)
+			Setup_CycleRate (+1);
+#endif
 		break;
 
 	case K_ENTER:
@@ -824,7 +879,12 @@ forward:
 		if (setup_cursor == 2 || setup_cursor == 3)
 			goto forward;
 
-		// setup_cursor == 4 (OK)
+#if defined(USE_QW_PROTOCOL)
+		if (setup_cursor == SETUP_RATE_ROW)
+			goto forward;		// cycle the connection preset
+#endif
+
+		// last row (Accept)
 		if (Q_strcmp(cl_name.string, setup_myname) != 0)
 			Cbuf_AddText ( va ("name \"%s\"\n", setup_myname) );
 		if (Q_strcmp(hostname.string, setup_hostname) != 0)
