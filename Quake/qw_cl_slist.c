@@ -5,8 +5,9 @@ qw_cl_slist.c -- QuakeWorld master server browser
 A QW master (default master.quakeworld.nu:27000) answers a bare "c\n" request
 with a packed list of active servers: a "\xff\xff\xff\xffd\n" header followed by
 6-byte records, each a 4-byte IPv4 address and a 2-byte port in network order.
-The request goes out from the menu while we are not connected, so the reply is
-drained here every frame rather than through the in-game netchan pump.
+The qw_masters cvar holds a space-separated list of masters, all queried at once;
+their replies are drained and merged here over a short window while we sit in the
+menu, not connected.
 ================================================================================
 */
 #include "quakedef.h"
@@ -19,71 +20,94 @@ drained here every frame rather than through the in-game netchan pump.
 qw_netadr_t	qw_serverlist[QW_MAX_SERVERS];
 int		qw_numservers;
 
-static cvar_t	qw_master = {"qw_master", "master.quakeworld.nu", CVAR_ARCHIVE};
+// Space-separated master list; entries without a port default to 27000.
+static cvar_t	qw_masters = {"qw_masters",
+	"master.quakeworld.nu master.quakeservers.net qwmaster.fodquake.net",
+	CVAR_ARCHIVE};
+
 static qboolean	qw_slist_pending;
 static double	qw_slist_time;
 
+#define	QW_SLIST_WINDOW	4.0	// seconds to gather replies from all masters
+
 /*
 ==============
-CLQW_ParseMasterReply -- unpack the 6-byte IP:port records into the list.
+CLQW_AddServer -- append one 6-byte record (4-byte IP + 2-byte port), skipping
+duplicates so overlapping master lists merge cleanly.
 ==============
 */
-static void CLQW_ParseMasterReply (byte *p, byte *end)
+static void CLQW_AddServer (const byte *rec)
 {
-	qw_numservers = 0;
+	qw_netadr_t	a;
+	int		i;
 
-	for ( ; p + 6 <= end && qw_numservers < QW_MAX_SERVERS; p += 6)
-	{
-		qw_netadr_t	*a = &qw_serverlist[qw_numservers];
+	if (!rec[0] && !rec[1] && !rec[2] && !rec[3])
+		return;				// empty/terminator record
 
-		if (!p[0] && !p[1] && !p[2] && !p[3])
-			continue;		// empty/terminator record
+	memset (&a, 0, sizeof(a));
+	memcpy (a.ip, rec, 4);
+	memcpy (&a.port, rec + 4, 2);		// already network byte order
 
-		memset (a, 0, sizeof(*a));
-		a->ip[0] = p[0];
-		a->ip[1] = p[1];
-		a->ip[2] = p[2];
-		a->ip[3] = p[3];
-		memcpy (&a->port, p + 4, 2);	// already network byte order
-		qw_numservers++;
-	}
+	for (i = 0; i < qw_numservers; i++)
+		if (!memcmp (qw_serverlist[i].ip, a.ip, 4) && qw_serverlist[i].port == a.port)
+			return;				// already listed
 
-	qw_slist_pending = false;
-	Con_Printf ("[QW] master returned %i servers\n", qw_numservers);
+	if (qw_numservers < QW_MAX_SERVERS)
+		qw_serverlist[qw_numservers++] = a;
 }
 
 /*
 ==============
-CLQW_SList_Query -- send the list request to a master (name or numeric address).
+CLQW_SendOneMaster -- resolve a master and fire the list request at it.
 ==============
 */
-void CLQW_SList_Query (const char *master)
+static void CLQW_SendOneMaster (const char *host)
 {
 	qw_netadr_t	adr;
 	static const byte req[2] = { 'c', '\n' };
 
-	if (!master || !master[0])
-		master = qw_master.string;
-
-	if (!QWNET_StringToAdr (master, &adr))
+	if (!QWNET_StringToAdr (host, &adr))
 	{
-		Con_Printf ("[QW] bad master address \"%s\"\n", master);
+		Con_Printf ("[QW] bad master \"%s\"\n", host);
 		return;
 	}
-	if (!strchr (master, ':'))
+	if (!strchr (host, ':'))
 		QWNET_SetPort (&adr, QW_PORT_MASTER);	// masters live on 27000
 
-	qw_numservers = 0;
-	qw_slist_pending = true;
-	qw_slist_time = realtime;
 	Con_Printf ("[QW] querying master %s ...\n", QWNET_AdrToString (adr));
 	QWNET_SendPacket (2, req, adr);
 }
 
 /*
 ==============
-CLQW_SList_Poll -- while a query is in flight, drain the socket for the reply.
-Only runs when idle, so it never steals packets from an active game.
+CLQW_SList_Query -- query one master (if given) or every master in qw_masters.
+==============
+*/
+void CLQW_SList_Query (const char *master)
+{
+	qw_numservers = 0;
+	qw_slist_pending = true;
+	qw_slist_time = realtime;
+
+	if (master && master[0])
+	{
+		CLQW_SendOneMaster (master);
+		return;
+	}
+
+	{	// walk the space/tab separated list
+		char	list[512], *tok;
+
+		q_strlcpy (list, qw_masters.string, sizeof(list));
+		for (tok = strtok (list, " \t"); tok; tok = strtok (NULL, " \t"))
+			CLQW_SendOneMaster (tok);
+	}
+}
+
+/*
+==============
+CLQW_SList_Poll -- while a query is in flight, merge any master replies. Runs
+only when idle, so it never steals packets from an active game.
 ==============
 */
 void CLQW_SList_Poll (void)
@@ -91,10 +115,10 @@ void CLQW_SList_Poll (void)
 	if (!qw_slist_pending || !CLQW_IsIdle ())
 		return;
 
-	if (realtime - qw_slist_time > 5.0)
+	if (realtime - qw_slist_time > QW_SLIST_WINDOW)
 	{
 		qw_slist_pending = false;
-		Con_Printf ("[QW] master query timed out\n");
+		Con_Printf ("[QW] %i servers\n", qw_numservers);
 		return;
 	}
 
@@ -103,17 +127,16 @@ void CLQW_SList_Poll (void)
 		byte	*p = net_message.data;
 		byte	*end = net_message.data + net_message.cursize;
 
-		// accept the reply with or without the connectionless -1 prefix
 		if (end - p >= 4 && p[0] == 0xff && p[1] == 0xff && p[2] == 0xff && p[3] == 0xff)
 			p += 4;
-		if (p < end && *p == QW_M2C_MASTER_REPLY)
-		{
+		if (p >= end || *p != QW_M2C_MASTER_REPLY)
+			continue;		// not a master reply
+
+		p++;				// 'd'
+		if (p < end && *p == '\n')
 			p++;
-			if (p < end && *p == '\n')
-				p++;
-			CLQW_ParseMasterReply (p, end);
-			return;
-		}
+		for ( ; p + 6 <= end; p += 6)
+			CLQW_AddServer (p);
 	}
 }
 
@@ -143,7 +166,7 @@ static void CLQW_Servers_f (void)
 
 void CLQW_SList_Init (void)
 {
-	Cvar_RegisterVariable (&qw_master);
+	Cvar_RegisterVariable (&qw_masters);
 	Cmd_AddCommand ("slist", CLQW_SList_f);
 	Cmd_AddCommand ("qwservers", CLQW_Servers_f);
 }
