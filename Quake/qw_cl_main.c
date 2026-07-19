@@ -155,8 +155,7 @@ static void CLQW_ReadPackets (void)
 		if (!QWNetchan_Process (&cls.netchan))
 			continue;		// wasn't accepted (bad seq / wrong address)
 
-		// TODO(phase 2): CLQW_ParseServerMessage () -- serverdata, precache, etc.
-		Con_DPrintf ("[QW] netchan message: %i bytes\n", net_message.cursize);
+		CLQW_ParseServerMessage ();
 	}
 }
 

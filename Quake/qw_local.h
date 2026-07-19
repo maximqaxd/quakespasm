@@ -145,10 +145,41 @@ typedef enum
 	PROTO_QW	// QuakeWorld protocol 28 (netchan)
 } protofamily_t;
 
+// Server-side movement constants sent in svc_serverdata; needed by client-side
+// prediction (phase 4). Stored now so the serverdata parse stays in sync.
+typedef struct
+{
+	float	gravity;
+	float	stopspeed;
+	float	maxspeed;
+	float	spectatormaxspeed;
+	float	accelerate;
+	float	airaccelerate;
+	float	wateraccelerate;
+	float	friction;
+	float	waterfriction;
+	float	entgravity;
+} qw_movevars_t;
+
+extern qw_movevars_t	qw_movevars;
+
+// QuakeWorld signon/connection state that has no NetQuake equivalent.
+typedef struct
+{
+	int		servercount;	// server's spawn count, echoed in every request
+	int		playernum;	// our client slot
+	qboolean	spectator;
+	char		gamedir[64];	// server's gamedir
+	char		levelname[40];	// full level name for the console/scoreboard
+} qwcl_state_t;
+
+extern qwcl_state_t	qwcl;
+
 // --- module entry points (filled in across the port phases) ------------------
 void	CLQW_Init (void);				// one-time QW client init (from CL_Init)
 void	CLQW_EstablishConnection (const char *host);	// connectionless handshake start
 void	CLQW_RunConnection (void);			// per-frame pump (from Host_Frame)
+void	CLQW_ParseServerMessage (void);			// parse a netchan message (qw_cl_parse.c)
 
 #endif	/* USE_QW_PROTOCOL */
 
