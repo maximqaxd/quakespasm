@@ -21,6 +21,7 @@ Received datagrams land in the shared net_message so MSG_Read* parses them.
 
 #include "qw_net.h"
 #include "net_udp.h"	/* shared UDP_OpenSocket / UDP_Read / UDP_Write / UDP_CloseSocket */
+#include <netdb.h>	/* gethostbyname -- KOS resolves DNS on the Dreamcast */
 
 static sys_socket_t	qw_socket = INVALID_SOCKET;
 
@@ -67,22 +68,46 @@ const char *QWNET_AdrToString (qw_netadr_t a)
 
 /*
 ==============
-QWNET_StringToAdr -- parse "1.2.3.4" or "1.2.3.4:27500" (numeric only)
+QWNET_StringToAdr -- parse "host[:port]", where host is a dotted-quad or a name.
+Names are resolved through KOS's DNS resolver (blocking, but only used for the
+one-off connect/master queries). Port defaults to the QW server port.
 ==============
 */
 qboolean QWNET_StringToAdr (const char *s, qw_netadr_t *a)
 {
-	int	b[4], port = QW_PORT_SERVER;
+	char		copy[256], *colon;
+	int		b[4], port = QW_PORT_SERVER;
+	struct hostent	*h;
 
 	memset (a, 0, sizeof(*a));
-	if (sscanf (s, "%d.%d.%d.%d:%d", &b[0], &b[1], &b[2], &b[3], &port) < 4)
-		return false;
 
-	a->ip[0] = (byte)b[0];
-	a->ip[1] = (byte)b[1];
-	a->ip[2] = (byte)b[2];
-	a->ip[3] = (byte)b[3];
-	a->port  = htons ((unsigned short)port);
+	q_strlcpy (copy, s, sizeof(copy));
+	colon = strchr (copy, ':');
+	if (colon)
+	{
+		*colon = '\0';
+		port = atoi (colon + 1);
+	}
+
+	if (sscanf (copy, "%d.%d.%d.%d", &b[0], &b[1], &b[2], &b[3]) == 4)
+	{	// numeric dotted-quad -- no lookup needed
+		a->ip[0] = (byte)b[0];
+		a->ip[1] = (byte)b[1];
+		a->ip[2] = (byte)b[2];
+		a->ip[3] = (byte)b[3];
+		a->port  = htons ((unsigned short)port);
+		return true;
+	}
+
+	h = gethostbyname (copy);
+	if (!h || !h->h_addr_list || !h->h_addr_list[0] || h->h_length != 4)
+	{
+		Con_Printf ("[QW] can't resolve \"%s\"\n", copy);
+		return false;
+	}
+
+	memcpy (a->ip, h->h_addr_list[0], 4);
+	a->port = htons ((unsigned short)port);
 	return true;
 }
 
