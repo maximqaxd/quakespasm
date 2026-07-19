@@ -455,8 +455,7 @@ void CLQW_EmitEntities (void)
 	CLQW_LinkPacketEntities ();
 	CLQW_LinkProjectiles ();
 	CL_UpdateTEnts ();		// animate + link active lightning beams
-
-	CL_DecayLights ();		// fade explosion/muzzle dynamic lights
+	// (dynamic lights are decayed by the host frame, once cl.time advances)
 }
 
 #endif	/* USE_QW_PROTOCOL */

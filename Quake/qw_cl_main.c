@@ -185,6 +185,11 @@ void CLQW_RunConnection (void)
 	if (qw_connstate == QWCS_IDLE)
 		return;
 
+	// NetQuake advances cl.time in CL_ReadFromServer, which the QW pump replaces;
+	// drive it here so temp-entity beams expire, dynamic lights decay and bonus
+	// items keep rotating. (No interpolation yet, so realtime is close enough.)
+	cl.time = realtime;
+
 	CLQW_CheckForResend ();
 	CLQW_ReadPackets ();
 

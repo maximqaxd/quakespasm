@@ -647,9 +647,32 @@ void CLQW_ParseServerMessage (void)
 			(void) MSG_ReadFloat ();
 			break;
 
+		case qwsvc_setpause:
+			cl.paused = MSG_ReadByte ();
+			break;
+
+		// Per-player physics overrides (powerups, gravity zones). Feed the
+		// prediction movevars so our own simulation matches the server.
+		case qwsvc_maxspeed:
+			qw_movevars.maxspeed = MSG_ReadFloat ();
+			break;
+		case qwsvc_entgravity:
+			qw_movevars.entgravity = MSG_ReadFloat ();
+			break;
+
+		case qwsvc_download:
+			{	// [short] size (-1 = no file), [byte] percent, [bytes] data
+				int size = (short) MSG_ReadShort ();
+				(void) MSG_ReadByte ();		// percent
+				for (i = 0; i < size; i++)
+					(void) MSG_ReadByte ();
+			}
+			break;
+
 		default:
-			// precache lists, baselines, entity deltas -- phase 2b/3.
-			Con_DPrintf ("[QW] svc %i not handled yet; stopping parse\n", cmd);
+			// A protocol-28 server should never reach here; if it does the byte
+			// stream is out of sync and the rest of the message is unreadable.
+			Con_DPrintf ("[QW] svc %i not handled; stopping parse\n", cmd);
 			return;
 		}
 	}
