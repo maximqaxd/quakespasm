@@ -289,6 +289,7 @@ void	QWPM_PlayerMove (void);				// run one command's physics
 // prediction (qw_cl_pred.c)
 void	CLQW_InitPrediction (void);
 void	CLQW_PredictMove (void);
+void	CLQW_CalcPredictionError (const vec3_t predicted, const vec3_t server);
 
 // --- module entry points (filled in across the port phases) ------------------
 void	CLQW_Init (void);				// one-time QW client init (from CL_Init)

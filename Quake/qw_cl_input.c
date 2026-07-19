@@ -93,9 +93,13 @@ void CLQW_SendMove (void)
 	cmd = &qw_cmds[seq & QW_UPDATE_MASK];
 	memset (cmd, 0, sizeof(*cmd));
 
-	// movement + view angles from the shared input path
+	// movement + view angles from the shared input path. CL_BaseMove pulls
+	// keyboard movement/turning; IN_Move layers on the mouse and analog-stick
+	// look (which is what writes cl.viewangles on the Dreamcast pad) -- the same
+	// two-step NetQuake's CL_SendCmd runs.
 	memset (&nqcmd, 0, sizeof(nqcmd));
 	CL_BaseMove (&nqcmd);
+	IN_Move (&nqcmd);
 	VectorCopy (cl.viewangles, cmd->angles);
 	cmd->forwardmove = (short) nqcmd.forwardmove;
 	cmd->sidemove    = (short) nqcmd.sidemove;

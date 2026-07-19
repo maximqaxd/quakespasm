@@ -28,6 +28,38 @@ vec3_t		qw_simorg;
 vec3_t		qw_simvel;
 vec3_t		qw_simangles;
 
+// When a snapshot proves our prediction was slightly off, we don't snap the view
+// to the corrected spot -- we keep it where prediction had it and glide the error
+// out over QW_ERROR_DECAY seconds, so packet jitter reads as smooth motion.
+#define	QW_ERROR_DECAY		0.10	// seconds to blend a correction away
+#define	QW_ERROR_MAX		64.0	// bigger than this is a teleport, snap it
+static vec3_t	qw_prediction_error;
+static double	qw_prediction_error_time;
+
+/*
+==============
+CLQW_CalcPredictionError -- called from the parser when a snapshot acknowledges
+a command we already predicted: fold the miss (predicted - server) into the
+error we glide out, unless it is large enough to be a teleport.
+==============
+*/
+void CLQW_CalcPredictionError (const vec3_t predicted, const vec3_t server)
+{
+	vec3_t	delta;
+	float	len;
+
+	VectorSubtract (predicted, server, delta);
+	len = VectorLength (delta);
+	if (len > QW_ERROR_MAX || len < 0.01f)
+	{	// teleport, respawn, or a perfect prediction -- nothing to smooth
+		VectorCopy (vec3_origin, qw_prediction_error);
+		return;
+	}
+
+	VectorCopy (delta, qw_prediction_error);
+	qw_prediction_error_time = realtime;
+}
+
 /*
 ==============
 QWPM_SetupWorld -- physent 0 is the world; a single-physent world is enough to
@@ -128,6 +160,13 @@ void CLQW_PredictMove (void)
 
 	VectorCopy (to->origin, qw_simorg);
 	VectorCopy (to->velocity, qw_simvel);
+
+	// glide out any leftover prediction error instead of snapping to it
+	{
+		float	frac = 1.0f - (realtime - qw_prediction_error_time) / QW_ERROR_DECAY;
+		if (frac > 0 && frac <= 1.0f)
+			VectorMA (qw_simorg, frac, qw_prediction_error, qw_simorg);
+	}
 
 	// drive the view from the predicted origin
 	if (cl.viewentity)

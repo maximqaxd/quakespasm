@@ -249,12 +249,17 @@ static void CLQW_ParsePlayerinfo (void)
 		int			seq = cls.netchan.incoming_acknowledged;
 		qw_playerstate_t	*ps = &qw_frames[seq & QW_UPDATE_MASK].playerstate;
 
+		// the slot still holds our prediction for this command; measure the
+		// miss (and smooth it out) before overwriting with server truth
+		if (qw_validsequence)
+			CLQW_CalcPredictionError (ps->origin, origin);
+
 		VectorCopy (origin, ps->origin);
 		VectorCopy (velocity, ps->velocity);
 		ps->weaponframe = weaponframe;
-		ps->onground = -1;
-		ps->oldbuttons = 0;
-		ps->waterjumptime = 0;
+		// oldbuttons/waterjumptime/onground are not sent by the server; leave
+		// the predicted values in the slot so jump-hold and waterjump stay
+		// continuous across the snapshot boundary
 		qw_frames[seq & QW_UPDATE_MASK].playervalid = true;
 		qw_validsequence = seq;
 
