@@ -423,10 +423,21 @@ is never drawn).
 */
 static void CLQW_LinkPlayers (void)
 {
-	int			j;
+	int			j, msec, oldphysent;
+	double			playertime;
 	qw_player_render_t	*pl;
+	qw_playerstate_t	from, to;
 	entity_t		*ent;
 	qmodel_t		*model;
+
+	// how far into the past the freshest player states are
+	playertime = realtime - qw_latency + 0.02;
+	if (playertime > realtime)
+		playertime = realtime;
+
+	// physent 0 must be the world for the short forward sims below
+	qw_pmove.physents[0].model = cl.worldmodel;
+	VectorCopy (vec3_origin, qw_pmove.physents[0].origin);
 
 	for (j = 0; j < QW_MAX_CLIENTS; j++)
 	{
@@ -458,7 +469,35 @@ static void CLQW_LinkPlayers (void)
 		ent->angles[2] = 0;
 		ent->angles[2] = V_CalcRoll (ent->angles, pl->velocity) * 4;
 
-		VectorCopy (pl->origin, ent->origin);
+		// forward-predict: replay the player's last command for however stale
+		// their state is (half of it, to limit overruns), so shooters line up
+		// with their own projectiles instead of trailing them
+		msec = (int)(500 * (playertime - pl->state_time));
+		if (msec <= 0 || !cl_predict_players.value)
+		{
+			VectorCopy (pl->origin, ent->origin);
+		}
+		else
+		{
+			qw_usercmd_t	cmd;
+
+			if (msec > 255)
+				msec = 255;
+			cmd = pl->cmd;
+			cmd.msec = (byte) msec;
+
+			memset (&from, 0, sizeof(from));
+			VectorCopy (pl->origin, from.origin);
+			VectorCopy (pl->velocity, from.velocity);
+
+			oldphysent = qw_pmove.numphysent;
+			qw_pmove.numphysent = 1;	// clip to the world only
+			CLQW_PredictUsercmd (&from, &to, &cmd, false);
+			qw_pmove.numphysent = oldphysent;
+
+			VectorCopy (to.origin, ent->origin);
+		}
+
 		cl_visedicts[cl_numvisedicts++] = ent;
 	}
 }

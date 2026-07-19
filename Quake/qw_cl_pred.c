@@ -21,6 +21,8 @@ every command the server has not answered yet.
 #include "qw_local.h"
 
 cvar_t	cl_nopred = {"cl_nopred", "0", CVAR_NONE};
+cvar_t	cl_predict_players = {"cl_predict_players", "1", CVAR_NONE};
+cvar_t	cl_solid_players = {"cl_solid_players", "1", CVAR_NONE};
 
 qw_frame_t	qw_frames[QW_UPDATE_BACKUP];
 int		qw_validsequence;	// netchan seq of the last good snapshot
@@ -76,10 +78,40 @@ static void QWPM_SetupWorld (void)
 
 /*
 ==============
+CLQW_SetSolidPlayers -- append every other live player as a solid box so our
+predicted movement bumps into them the way the server's will.
+==============
+*/
+static void CLQW_SetSolidPlayers (void)
+{
+	int	j;
+
+	if (!cl_solid_players.value)
+		return;
+
+	for (j = 0; j < QW_MAX_CLIENTS; j++)
+	{
+		qw_player_render_t *pl = &qw_players[j];
+
+		if (pl->messagenum != qw_parsecount)
+			continue;		// not present this frame
+		if (j == qwcl.playernum)
+			continue;		// that's us
+		if (!pl->modelindex)
+			continue;
+		if (pl->flags & QWPF_DEAD)
+			continue;		// dead players aren't solid
+
+		QWPM_AddBoxPhysent (pl->origin);
+	}
+}
+
+/*
+==============
 CLQW_PredictUsercmd -- advance one command's worth of physics from 'from' to 'to'.
 ==============
 */
-static void CLQW_PredictUsercmd (qw_playerstate_t *from, qw_playerstate_t *to, qw_usercmd_t *u)
+void CLQW_PredictUsercmd (qw_playerstate_t *from, qw_playerstate_t *to, qw_usercmd_t *u, qboolean spectator)
 {
 	// split up very long moves so a hitch doesn't tunnel through geometry
 	if (u->msec > 50)
@@ -90,8 +122,8 @@ static void CLQW_PredictUsercmd (qw_playerstate_t *from, qw_playerstate_t *to, q
 		split = *u;
 		split.msec /= 2;
 
-		CLQW_PredictUsercmd (from, &temp, &split);
-		CLQW_PredictUsercmd (&temp, to, &split);
+		CLQW_PredictUsercmd (from, &temp, &split, spectator);
+		CLQW_PredictUsercmd (&temp, to, &split, spectator);
 		return;
 	}
 
@@ -102,7 +134,7 @@ static void CLQW_PredictUsercmd (qw_playerstate_t *from, qw_playerstate_t *to, q
 	qw_pmove.oldbuttons = from->oldbuttons;
 	qw_pmove.waterjumptime = from->waterjumptime;
 	qw_pmove.dead = (cl.stats[STAT_HEALTH] <= 0);
-	qw_pmove.spectator = qwcl.spectator;
+	qw_pmove.spectator = spectator;
 
 	qw_pmove.cmd = *u;
 
@@ -145,6 +177,7 @@ void CLQW_PredictMove (void)
 	if (!cl_nopred.value && cl.worldmodel)
 	{
 		QWPM_SetupWorld ();
+		CLQW_SetSolidPlayers ();
 
 		// simulate forward through the commands the server has not answered
 		for (i = qw_validsequence + 1;
@@ -152,7 +185,7 @@ void CLQW_PredictMove (void)
 			 i++)
 		{
 			qw_frame_t *f = &qw_frames[i & QW_UPDATE_MASK];
-			CLQW_PredictUsercmd (from, &f->playerstate, &f->cmd);
+			CLQW_PredictUsercmd (from, &f->playerstate, &f->cmd, qwcl.spectator);
 			to = &f->playerstate;
 			from = to;
 		}
@@ -184,6 +217,8 @@ CLQW_InitPrediction -- register the prediction cvar and prime the box hull.
 void CLQW_InitPrediction (void)
 {
 	Cvar_RegisterVariable (&cl_nopred);
+	Cvar_RegisterVariable (&cl_predict_players);
+	Cvar_RegisterVariable (&cl_solid_players);
 	QWPM_Init ();
 }
 

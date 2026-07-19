@@ -78,6 +78,27 @@ void QWPM_Init (void)
 
 /*
 ===================
+QWPM_AddBoxPhysent -- append a player-sized solid box (another player) to the
+physent list so movement clips against it.
+===================
+*/
+void QWPM_AddBoxPhysent (const vec3_t origin)
+{
+	qw_physent_t	*pe;
+
+	if (qw_pmove.numphysent >= QW_MAX_PHYSENTS)
+		return;
+
+	pe = &qw_pmove.physents[qw_pmove.numphysent++];
+	pe->model = NULL;
+	VectorCopy (origin, pe->origin);
+	VectorCopy (player_mins, pe->mins);
+	VectorCopy (player_maxs, pe->maxs);
+	pe->info = 0;
+}
+
+/*
+===================
 QWPM_HullForBox -- bounding boxes are turned into small BSP trees so everything
 goes through the same trace path.
 ===================

@@ -317,17 +317,21 @@ extern qw_entity_state_t	qw_baselines[QW_MAX_EDICTS];
 
 // Other players are delivered as playerinfo, not packet entities; keep the last
 // state per slot for rendering (our own slot is driven by prediction instead).
+// Their last command + the time their state was valid lets us simulate them
+// forward to now, the reference client's answer to laggy player models.
 typedef struct
 {
-	int	messagenum;	// == qw_parsecount on the frame this was received
-	vec3_t	origin;
-	vec3_t	viewangles;
-	vec3_t	velocity;
-	int	modelindex;
-	int	frame;
-	int	skinnum;
-	int	effects;
-	int	flags;
+	int		messagenum;	// == qw_parsecount on the frame this was received
+	double		state_time;	// when this state was valid on the server
+	vec3_t		origin;
+	vec3_t		viewangles;
+	vec3_t		velocity;
+	qw_usercmd_t	cmd;		// the player's last move command
+	int		modelindex;
+	int		frame;
+	int		skinnum;
+	int		effects;
+	int		flags;
 } qw_player_render_t;
 
 extern qw_player_render_t	qw_players[QW_MAX_CLIENTS];
@@ -356,10 +360,16 @@ extern int		qw_watertype;
 
 void	QWPM_Init (void);				// one-time box-hull setup
 void	QWPM_PlayerMove (void);				// run one command's physics
+void	QWPM_AddBoxPhysent (const vec3_t origin);	// player-sized solid box
+
+extern double	qw_latency;		// smoothed round-trip estimate (qw_cl_main.c)
 
 // prediction (qw_cl_pred.c)
+extern cvar_t	cl_predict_players;	// simulate other players forward to now
+extern cvar_t	cl_solid_players;	// clip our movement against other players
 void	CLQW_InitPrediction (void);
 void	CLQW_PredictMove (void);
+void	CLQW_PredictUsercmd (qw_playerstate_t *from, qw_playerstate_t *to, qw_usercmd_t *u, qboolean spectator);
 void	CLQW_CalcPredictionError (const vec3_t predicted, const vec3_t server);
 
 // --- module entry points (filled in across the port phases) ------------------

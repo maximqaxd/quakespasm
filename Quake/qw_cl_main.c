@@ -32,6 +32,10 @@ typedef enum
 
 static qwconnstate_t	qw_connstate = QWCS_IDLE;
 
+// Smoothed round-trip estimate, from command send to server acknowledgement.
+// Other-player forward prediction uses it to know how stale their state is.
+double	qw_latency;
+
 // Bytes/sec we ask the server to send us. Broadband default; set "rate 2500"
 // (or lower) on a modem. Archived so it persists.
 cvar_t	qw_rate = {"rate", "10000", CVAR_ARCHIVE};
@@ -170,6 +174,19 @@ static void CLQW_ReadPackets (void)
 		if (!QWNetchan_Process (&cls.netchan))
 			continue;		// wasn't accepted (bad seq / wrong address)
 
+		// latency sample: now minus when we sent the command this packet acks.
+		// Drift like the reference: jump down to better samples, creep up.
+		{
+			double lat = realtime - qw_frames[cls.netchan.incoming_acknowledged & QW_UPDATE_MASK].senttime;
+			if (lat >= 0 && lat <= 1.0)
+			{
+				if (lat < qw_latency || !qw_latency)
+					qw_latency = lat;
+				else
+					qw_latency += 0.001;
+			}
+		}
+
 		cl.last_received_message = realtime;	// keeps the net icon (SCR_DrawNet) off
 		CLQW_ParseServerMessage ();
 	}
@@ -228,6 +245,7 @@ void CLQW_EstablishConnection (const char *host)
 	qw_connstate = QWCS_CHALLENGING;
 	cls.qw_connect_time = -1;	// CLQW_CheckForResend fires immediately
 	cls.challenge = 0;
+	qw_latency = 0;
 	Con_DPrintf ("CLQW_EstablishConnection: %s\n", QWNET_AdrToString (cls.qw_server_adr));
 }
 

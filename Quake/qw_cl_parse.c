@@ -203,22 +203,23 @@ static void CLQW_ParseStatic (void)
 // own player's origin (prediction), and hand entity snapshots to qw_cl_ents.c.
 // ---------------------------------------------------------------------------
 
-// A QW usercmd delta (inside playerinfo PF_COMMAND). We keep the view angles
-// (they orient the player's model) and discard the rest.
-static void CLQW_ReadDeltaUsercmd (vec3_t out_angles)
+// A QW usercmd delta (inside playerinfo PF_COMMAND), against the null command.
+// It is the player's last move -- forward-prediction replays it to bring their
+// model up to the present.
+static void CLQW_ReadDeltaUsercmd (qw_usercmd_t *cmd)
 {
 	int	bits = MSG_ReadByte ();
 
-	VectorCopy (vec3_origin, out_angles);
-	if (bits & QWCM_ANGLE1)  out_angles[0] = MSG_ReadAngle16 (0);
-	if (bits & QWCM_ANGLE2)  out_angles[1] = MSG_ReadAngle16 (0);
-	if (bits & QWCM_ANGLE3)  out_angles[2] = MSG_ReadAngle16 (0);
-	if (bits & QWCM_FORWARD) (void) MSG_ReadShort ();
-	if (bits & QWCM_SIDE)    (void) MSG_ReadShort ();
-	if (bits & QWCM_UP)      (void) MSG_ReadShort ();
-	if (bits & QWCM_BUTTONS) (void) MSG_ReadByte ();
-	if (bits & QWCM_IMPULSE) (void) MSG_ReadByte ();
-	(void) MSG_ReadByte ();		// msec
+	memset (cmd, 0, sizeof(*cmd));
+	if (bits & QWCM_ANGLE1)  cmd->angles[0] = MSG_ReadAngle16 (0);
+	if (bits & QWCM_ANGLE2)  cmd->angles[1] = MSG_ReadAngle16 (0);
+	if (bits & QWCM_ANGLE3)  cmd->angles[2] = MSG_ReadAngle16 (0);
+	if (bits & QWCM_FORWARD) cmd->forwardmove = MSG_ReadShort ();
+	if (bits & QWCM_SIDE)    cmd->sidemove = MSG_ReadShort ();
+	if (bits & QWCM_UP)      cmd->upmove = MSG_ReadShort ();
+	if (bits & QWCM_BUTTONS) cmd->buttons = MSG_ReadByte ();
+	if (bits & QWCM_IMPULSE) cmd->impulse = MSG_ReadByte ();
+	cmd->msec = MSG_ReadByte ();
 }
 
 // svc_playerinfo: a player's state this frame. Every player is stored for
@@ -226,9 +227,11 @@ static void CLQW_ReadDeltaUsercmd (vec3_t out_angles)
 // origin/velocity so prediction can run forward from it.
 static void CLQW_ParsePlayerinfo (void)
 {
-	int	num, flags, i;
-	vec3_t	origin, velocity, cmdangles;
-	int	frame, modelindex, skinnum = 0, effects = 0, weaponframe = 0;
+	int		num, flags, i;
+	vec3_t		origin, velocity;
+	qw_usercmd_t	plcmd;
+	double		statetime;
+	int		frame, modelindex, skinnum = 0, effects = 0, weaponframe = 0;
 
 	num = MSG_ReadByte ();
 	flags = MSG_ReadShort ();
@@ -237,9 +240,14 @@ static void CLQW_ParsePlayerinfo (void)
 	origin[2] = MSG_ReadCoord (0);
 	frame = MSG_ReadByte ();
 
-	if (flags & QWPF_MSEC)    (void) MSG_ReadByte ();
-	VectorCopy (vec3_origin, cmdangles);
-	if (flags & QWPF_COMMAND) CLQW_ReadDeltaUsercmd (cmdangles);
+	// the player's move ran some time before this packet was sent; anchor to
+	// when we sent the command this snapshot acknowledges, minus that delay
+	statetime = qw_frames[cls.netchan.incoming_acknowledged & QW_UPDATE_MASK].senttime;
+	if (flags & QWPF_MSEC)
+		statetime -= MSG_ReadByte () * 0.001;
+
+	memset (&plcmd, 0, sizeof(plcmd));
+	if (flags & QWPF_COMMAND) CLQW_ReadDeltaUsercmd (&plcmd);
 	VectorCopy (vec3_origin, velocity);
 	for (i = 0; i < 3; i++)
 		if (flags & (QWPF_VELOCITY1 << i))
@@ -254,9 +262,11 @@ static void CLQW_ParsePlayerinfo (void)
 	{
 		qw_player_render_t *pl = &qw_players[num];
 		pl->messagenum = qw_parsecount;
+		pl->state_time = statetime;
 		VectorCopy (origin, pl->origin);
-		VectorCopy (cmdangles, pl->viewangles);
+		VectorCopy (plcmd.angles, pl->viewangles);
 		VectorCopy (velocity, pl->velocity);
+		pl->cmd = plcmd;
 		pl->modelindex = modelindex;
 		pl->frame = frame;
 		pl->skinnum = skinnum;
