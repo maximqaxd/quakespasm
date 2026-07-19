@@ -891,6 +891,12 @@ forward:
 			Cvar_Set("hostname", setup_hostname);
 		if (setup_top != setup_oldtop || setup_bottom != setup_oldbottom)
 			Cbuf_AddText( va ("color %i %i\n", setup_top, setup_bottom) );
+#if defined(PLATFORM_DREAMCAST)
+		// Persist name/colour/rate to the VMU now -- the DC is powered off rather
+		// than quit, so the shutdown-time config write never happens. Stuffed last
+		// so it runs after the name/color commands above have applied.
+		Cbuf_AddText ("savecfg\n");
+#endif
 		m_entersound = true;
 		M_Menu_MultiPlayer_f ();
 		break;

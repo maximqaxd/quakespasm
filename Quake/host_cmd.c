@@ -2389,6 +2389,21 @@ void Host_Resetdemos (void)
 
 //=============================================================================
 
+#if defined(PLATFORM_DREAMCAST)
+/*
+==================
+Host_SaveConfig_f -- flush archived cvars + binds to config.cfg (and thus the
+VMU) on demand. The Dreamcast is normally powered off rather than quit, so the
+shutdown-time write never runs; menus that change settings stuff this so the
+change actually persists.
+==================
+*/
+static void Host_SaveConfig_f (void)
+{
+	Host_WriteConfiguration ();
+}
+#endif
+
 /*
 ==================
 Host_InitCommands
@@ -2396,6 +2411,9 @@ Host_InitCommands
 */
 void Host_InitCommands (void)
 {
+#if defined(PLATFORM_DREAMCAST)
+	Cmd_AddCommand ("savecfg", Host_SaveConfig_f);
+#endif
 	Cmd_AddCommand ("maps", Host_Maps_f); //johnfitz
 	Cmd_AddCommand ("maps_mod", Host_Maps_Mod_f);
 	Cmd_AddCommand ("mods", Host_Mods_f); //johnfitz
