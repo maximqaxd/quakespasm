@@ -196,6 +196,141 @@ static void CLQW_ParseBaseline (void)
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Game-frame parsing (phase 3a): consume every per-frame opcode so the stream
+// stays in sync, and drive the view from our own player's origin. Linking the
+// other entities/players into the render list is phase 3b.
+// ---------------------------------------------------------------------------
+
+// A QW usercmd delta (inside playerinfo PF_COMMAND). We only need to skip it.
+static void CLQW_SkipDeltaUsercmd (void)
+{
+	int	bits = MSG_ReadByte ();
+
+	if (bits & QWCM_ANGLE1)  (void) MSG_ReadAngle16 (0);
+	if (bits & QWCM_ANGLE2)  (void) MSG_ReadAngle16 (0);
+	if (bits & QWCM_ANGLE3)  (void) MSG_ReadAngle16 (0);
+	if (bits & QWCM_FORWARD) (void) MSG_ReadShort ();
+	if (bits & QWCM_SIDE)    (void) MSG_ReadShort ();
+	if (bits & QWCM_UP)      (void) MSG_ReadShort ();
+	if (bits & QWCM_BUTTONS) (void) MSG_ReadByte ();
+	if (bits & QWCM_IMPULSE) (void) MSG_ReadByte ();
+	(void) MSG_ReadByte ();		// msec
+}
+
+// svc_playerinfo: a player's state this frame. For our own slot, drive the view.
+static void CLQW_ParsePlayerinfo (void)
+{
+	int	num, flags, i;
+	vec3_t	origin;
+
+	num = MSG_ReadByte ();
+	flags = MSG_ReadShort ();
+	origin[0] = MSG_ReadCoord (0);
+	origin[1] = MSG_ReadCoord (0);
+	origin[2] = MSG_ReadCoord (0);
+	(void) MSG_ReadByte ();		// frame
+	if (flags & QWPF_MSEC)    (void) MSG_ReadByte ();
+	if (flags & QWPF_COMMAND) CLQW_SkipDeltaUsercmd ();
+	for (i = 0; i < 3; i++)
+		if (flags & (QWPF_VELOCITY1 << i)) (void) MSG_ReadShort ();
+	if (flags & QWPF_MODEL)       (void) MSG_ReadByte ();
+	if (flags & QWPF_SKINNUM)     (void) MSG_ReadByte ();
+	if (flags & QWPF_EFFECTS)     (void) MSG_ReadByte ();
+	if (flags & QWPF_WEAPONFRAME) (void) MSG_ReadByte ();
+
+	if (num == qwcl.playernum)
+	{	// this is us -- move the view entity to our origin
+		entity_t *ent = CL_EntityNum (num + 1);
+		VectorCopy (origin, ent->origin);
+		cl.viewentity = num + 1;
+		cl.viewheight = 22;	// DEFAULT_VIEWHEIGHT
+	}
+}
+
+// A single packetentities delta -- we only need to skip the encoded fields.
+static void CLQW_SkipEntityDelta (int bits)
+{
+	if (bits & QWU_MODEL)    (void) MSG_ReadByte ();
+	if (bits & QWU_FRAME)    (void) MSG_ReadByte ();
+	if (bits & QWU_COLORMAP) (void) MSG_ReadByte ();
+	if (bits & QWU_SKIN)     (void) MSG_ReadByte ();
+	if (bits & QWU_EFFECTS)  (void) MSG_ReadByte ();
+	if (bits & QWU_ORIGIN1)  (void) MSG_ReadCoord (0);
+	if (bits & QWU_ANGLE1)   (void) MSG_ReadAngle (0);
+	if (bits & QWU_ORIGIN2)  (void) MSG_ReadCoord (0);
+	if (bits & QWU_ANGLE2)   (void) MSG_ReadAngle (0);
+	if (bits & QWU_ORIGIN3)  (void) MSG_ReadCoord (0);
+	if (bits & QWU_ANGLE3)   (void) MSG_ReadAngle (0);
+	// QWU_SOLID carries no data
+}
+
+// svc_packetentities / svc_deltapacketentities: the delta-compressed entity list.
+static void CLQW_ParsePacketEntities (qboolean delta)
+{
+	int	word, bits;
+
+	if (delta)
+		(void) MSG_ReadByte ();		// frame we are delta'ing from
+
+	for (;;)
+	{
+		word = (unsigned short) MSG_ReadShort ();
+		if (msg_badread || word == 0)
+			break;			// end of the entity list
+		bits = word & ~511;		// entity number is the low 9 bits
+		if (bits & QWU_MOREBITS)
+			bits |= MSG_ReadByte ();
+		if (bits & QWU_REMOVE)
+			continue;		// removal carries no fields
+		CLQW_SkipEntityDelta (bits);
+	}
+}
+
+// svc_sound: play a precached sound at a world position.
+static void CLQW_ParseSound (void)
+{
+	int	channel, ent, sound_num, i;
+	float	volume = 255.0f, attenuation = 1.0f;
+	vec3_t	pos;
+
+	channel = (unsigned short) MSG_ReadShort ();
+	if (channel & QWSND_VOLUME)
+		volume = MSG_ReadByte ();
+	if (channel & QWSND_ATTENUATION)
+		attenuation = MSG_ReadByte () / 64.0f;
+	sound_num = MSG_ReadByte ();
+	for (i = 0; i < 3; i++)
+		pos[i] = MSG_ReadCoord (0);
+
+	ent = (channel >> 3) & 1023;
+	channel &= 7;
+	if (sound_num < MAX_SOUNDS && cl.sound_precache[sound_num])
+		S_StartSound (ent, channel, cl.sound_precache[sound_num], pos, volume / 255.0f, attenuation);
+}
+
+// svc_temp_entity: skip the point/beam data (spawning the effect is phase 3b).
+static void CLQW_ParseTEnt (void)
+{
+	int	type = MSG_ReadByte ();
+	int	i;
+
+	switch (type)
+	{
+	case 5: case 6: case 9:		// TE_LIGHTNING1/2/3 -- entity + start + end
+		(void) MSG_ReadShort ();
+		for (i = 0; i < 6; i++) (void) MSG_ReadCoord (0);
+		break;
+	case 2: case 12:		// TE_GUNSHOT / TE_BLOOD -- count + point
+		(void) MSG_ReadByte ();
+		for (i = 0; i < 3; i++) (void) MSG_ReadCoord (0);
+		break;
+	default:			// spikes, explosions, splashes, teleport -- point
+		for (i = 0; i < 3; i++) (void) MSG_ReadCoord (0);
+		break;
+	}
+}
+
 /*
 ==============
 CLQW_ParseServerMessage -- decode one netchan message worth of svc_ commands
@@ -273,6 +408,74 @@ void CLQW_ParseServerMessage (void)
 			(void) MSG_ReadByte ();		// sound number
 			(void) MSG_ReadByte ();		// volume
 			(void) MSG_ReadByte ();		// attenuation
+			break;
+
+		// --- per-frame game state (phase 3a: consume + drive the view) ---
+		case qwsvc_setview:
+			cl.viewentity = MSG_ReadShort ();
+			break;
+
+		case qwsvc_playerinfo:
+			CLQW_ParsePlayerinfo ();
+			break;
+
+		case qwsvc_packetentities:
+			CLQW_ParsePacketEntities (false);
+			break;
+
+		case qwsvc_deltapacketentities:
+			CLQW_ParsePacketEntities (true);
+			break;
+
+		case qwsvc_sound:
+			CLQW_ParseSound ();
+			break;
+
+		case qwsvc_stopsound:
+			(void) MSG_ReadShort ();
+			break;
+
+		case qwsvc_temp_entity:
+			CLQW_ParseTEnt ();
+			break;
+
+		case qwsvc_damage:
+			(void) MSG_ReadByte ();		// armor
+			(void) MSG_ReadByte ();		// blood
+			for (i = 0; i < 3; i++)
+				(void) MSG_ReadCoord (0);
+			break;
+
+		case qwsvc_muzzleflash:
+			(void) MSG_ReadShort ();	// entity
+			break;
+
+		case qwsvc_nails:
+			{
+				int c = MSG_ReadByte ();
+				for (i = 0; i < c * 6; i++)
+					(void) MSG_ReadByte ();	// 6 bytes per nail
+			}
+			break;
+
+		case qwsvc_chokecount:
+			(void) MSG_ReadByte ();
+			break;
+
+		case qwsvc_smallkick:
+		case qwsvc_bigkick:
+		case qwsvc_killedmonster:
+		case qwsvc_foundsecret:
+		case qwsvc_sellscreen:
+			break;			// no payload
+
+		case qwsvc_intermission:
+			for (i = 0; i < 3; i++) (void) MSG_ReadCoord (0);	// origin
+			for (i = 0; i < 3; i++) (void) MSG_ReadAngle (0);	// angles
+			break;
+
+		case qwsvc_finale:
+			SCR_CenterPrint (MSG_ReadString ());
 			break;
 
 		case qwsvc_setangle:

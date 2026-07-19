@@ -203,14 +203,75 @@ void CLQW_EstablishConnection (const char *host)
 	Con_DPrintf ("CLQW_EstablishConnection: %s\n", QWNET_AdrToString (cls.qw_server_adr));
 }
 
-// QuakeWorld servers stuff a handful of client commands during signon/play that
-// QuakeSpasm doesn't have. Register them as no-ops for now so they don't spam
-// "Unknown command":
-//   fullserverinfo  -- the server's serverinfo string (serverinfo tracking: later)
-//   packet          -- send a raw packet (server anti-NAT probe; unused by us)
-//   changing        -- map-change notice; the server reconnects us afterwards
-static void CLQW_Noop_f (void)
+static char	qwcl_serverinfo[512];	// last fullserverinfo string from the server
+
+/*
+=====================
+CLQW_FullServerinfo_f -- "fullserverinfo \key\val..." : the server's serverinfo.
+We just keep the string; parsing individual keys can come with the HUD/rules work.
+=====================
+*/
+static void CLQW_FullServerinfo_f (void)
 {
+	if (Cmd_Argc () != 2)
+		return;
+	q_strlcpy (qwcl_serverinfo, Cmd_Argv (1), sizeof(qwcl_serverinfo));
+}
+
+/*
+=====================
+CLQW_Packet_f -- "packet <address> <contents>" : send a connectionless packet,
+translating a literal backslash-n into a newline (used for server redirects).
+=====================
+*/
+static void CLQW_Packet_f (void)
+{
+	qw_netadr_t	adr;
+	char		send[1024];
+	const char	*in;
+	char		*out;
+	int		i, len;
+
+	if (Cmd_Argc () != 3)
+	{
+		Con_Printf ("packet <destination> <contents>\n");
+		return;
+	}
+	if (!QWNET_StringToAdr (Cmd_Argv (1), &adr))
+	{
+		Con_Printf ("Bad address\n");
+		return;
+	}
+
+	in = Cmd_Argv (2);
+	out = send + 4;
+	send[0] = send[1] = send[2] = send[3] = (char)0xff;
+
+	len = (int) strlen (in);
+	for (i = 0; i < len && out < send + sizeof(send) - 1; i++)
+	{
+		if (in[i] == '\\' && in[i+1] == 'n')
+		{
+			*out++ = '\n';
+			i++;
+		}
+		else
+			*out++ = in[i];
+	}
+	*out = 0;
+
+	QWNET_SendPacket ((int)(out - send), send, adr);
+}
+
+/*
+=====================
+CLQW_Changing_f -- "changing" : the server is switching maps and will resend the
+signon. Keep the netchan; just note it so we don't spam the console.
+=====================
+*/
+static void CLQW_Changing_f (void)
+{
+	Con_DPrintf ("[QW] server changing map...\n");
 }
 
 /*
@@ -222,9 +283,9 @@ void CLQW_Init (void)
 {
 	QWNET_Init ();
 	QWNetchan_Init ();
-	Cmd_AddCommand ("fullserverinfo", CLQW_Noop_f);
-	Cmd_AddCommand ("packet", CLQW_Noop_f);
-	Cmd_AddCommand ("changing", CLQW_Noop_f);
+	Cmd_AddCommand ("fullserverinfo", CLQW_FullServerinfo_f);
+	Cmd_AddCommand ("packet", CLQW_Packet_f);
+	Cmd_AddCommand ("changing", CLQW_Changing_f);
 }
 
 #endif	/* USE_QW_PROTOCOL */

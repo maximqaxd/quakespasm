@@ -308,6 +308,7 @@ dlight_t *CL_AllocDlight (int key);
 void	CL_DecayLights (void);
 
 void CL_Init (void);
+entity_t *CL_EntityNum (int num);	// grows cl_entities as needed
 
 void CL_EstablishConnection (const char *host);
 void CL_Signon1 (void);
