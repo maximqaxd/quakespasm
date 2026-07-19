@@ -35,6 +35,12 @@ static void CLQW_ParseServerData (void)
 	CL_ClearState ();
 	CLQW_ClearEntities ();
 
+	// QW is always multiplayer: size the scoreboard (names, frags, colors) for
+	// every slot. This also arms the renderer's player-color path, which keys
+	// off cl.maxclients.
+	cl.maxclients = QW_MAX_CLIENTS;
+	cl.scores = (scoreboard_t *) Hunk_AllocName (cl.maxclients * sizeof(*cl.scores), "scores");
+
 	protover = MSG_ReadLong ();
 	if (protover != QW_PROTOCOL_VERSION)
 	{
@@ -246,8 +252,8 @@ static void CLQW_ParsePlayerinfo (void)
 	if (flags & QWPF_MSEC)
 		statetime -= MSG_ReadByte () * 0.001;
 
-	memset (&plcmd, 0, sizeof(plcmd));
-	if (flags & QWPF_COMMAND) CLQW_ReadDeltaUsercmd (&plcmd);
+	if (flags & QWPF_COMMAND)
+		CLQW_ReadDeltaUsercmd (&plcmd);
 	VectorCopy (vec3_origin, velocity);
 	for (i = 0; i < 3; i++)
 		if (flags & (QWPF_VELOCITY1 << i))
@@ -264,9 +270,13 @@ static void CLQW_ParsePlayerinfo (void)
 		pl->messagenum = qw_parsecount;
 		pl->state_time = statetime;
 		VectorCopy (origin, pl->origin);
-		VectorCopy (plcmd.angles, pl->viewangles);
 		VectorCopy (velocity, pl->velocity);
-		pl->cmd = plcmd;
+		if (flags & QWPF_COMMAND)
+		{	// bots and dead players come without a command; keep the last
+			// one so they don't snap to yaw 0 and stall the forward sim
+			VectorCopy (plcmd.angles, pl->viewangles);
+			pl->cmd = plcmd;
+		}
 		pl->modelindex = modelindex;
 		pl->frame = frame;
 		pl->skinnum = skinnum;
@@ -439,6 +449,81 @@ static void CLQW_ParseTEnt (void)
 		Con_DPrintf ("[QW] unknown temp entity %i\n", type);
 		break;
 	}
+}
+
+/*
+=====================
+CLQW_InfoValue -- look up a key in a QW info string ("\key\value\key\value...").
+Returns a static buffer; use the value before the next call.
+=====================
+*/
+static const char *CLQW_InfoValue (const char *info, const char *key)
+{
+	static char	value[64];
+	char		pkey[64];
+	char		*o;
+
+	if (*info == '\\')
+		info++;
+	while (*info)
+	{
+		o = pkey;
+		while (*info && *info != '\\')
+			if (o < pkey + sizeof(pkey) - 1) *o++ = *info++; else info++;
+		*o = 0;
+		if (*info)
+			info++;
+
+		o = value;
+		while (*info && *info != '\\')
+			if (o < value + sizeof(value) - 1) *o++ = *info++; else info++;
+		*o = 0;
+		if (*info)
+			info++;
+
+		if (!strcmp (pkey, key))
+			return value;
+	}
+	return "";
+}
+
+/*
+=====================
+CLQW_ProcessUserinfo -- pull the fields we display (name, shirt/pants colors)
+out of a player's userinfo and rebuild their translated skin.
+=====================
+*/
+static void CLQW_ProcessUserinfo (int slot, const char *info)
+{
+	int	top, bottom;
+
+	q_strlcpy (cl.scores[slot].name, CLQW_InfoValue (info, "name"), MAX_SCOREBOARDNAME);
+	top = CLAMP (0, atoi (CLQW_InfoValue (info, "topcolor")), 13);
+	bottom = CLAMP (0, atoi (CLQW_InfoValue (info, "bottomcolor")), 13);
+	cl.scores[slot].colors = (top << 4) | bottom;
+
+	if (slot < MAX_SCOREBOARD)	// playertextures[] only covers this many
+		CL_NewTranslation (slot);
+}
+
+/*
+=====================
+CLQW_SetInfoKey -- svc_setinfo: one changed userinfo key for a player.
+=====================
+*/
+static void CLQW_SetInfoKey (int slot, const char *key, const char *value)
+{
+	if (!strcmp (key, "name"))
+		q_strlcpy (cl.scores[slot].name, value, MAX_SCOREBOARDNAME);
+	else if (!strcmp (key, "topcolor"))
+		cl.scores[slot].colors = (cl.scores[slot].colors & 0x0f) | (CLAMP (0, atoi (value), 13) << 4);
+	else if (!strcmp (key, "bottomcolor"))
+		cl.scores[slot].colors = (cl.scores[slot].colors & 0xf0) | CLAMP (0, atoi (value), 13);
+	else
+		return;
+
+	if (slot < MAX_SCOREBOARD)
+		CL_NewTranslation (slot);
 }
 
 /*
@@ -626,20 +711,32 @@ void CLQW_ParseServerMessage (void)
 			break;
 
 		case qwsvc_updateuserinfo:
-			(void) MSG_ReadByte ();		// slot
+			i = MSG_ReadByte ();		// slot
 			(void) MSG_ReadLong ();		// userid
-			(void) MSG_ReadString ();	// userinfo
+			s = MSG_ReadString ();		// userinfo
+			if (i < QW_MAX_CLIENTS && cl.scores)
+				CLQW_ProcessUserinfo (i, s);
 			break;
 
 		case qwsvc_setinfo:
-			(void) MSG_ReadByte ();		// slot
-			(void) MSG_ReadString ();	// key
-			(void) MSG_ReadString ();	// value
+			{
+				char	key[64], val[64];
+
+				i = MSG_ReadByte ();
+				// MSG_ReadString reuses one buffer -- copy the key first
+				q_strlcpy (key, MSG_ReadString (), sizeof(key));
+				q_strlcpy (val, MSG_ReadString (), sizeof(val));
+				if (i < QW_MAX_CLIENTS && cl.scores)
+					CLQW_SetInfoKey (i, key, val);
+			}
 			break;
 
 		case qwsvc_updatefrags:
-			(void) MSG_ReadByte ();
-			(void) MSG_ReadShort ();
+			i = MSG_ReadByte ();
+			if (i < QW_MAX_CLIENTS && cl.scores)
+				cl.scores[i].frags = MSG_ReadShort ();
+			else
+				(void) MSG_ReadShort ();
 			break;
 
 		case qwsvc_updateping:
@@ -653,8 +750,11 @@ void CLQW_ParseServerMessage (void)
 			break;
 
 		case qwsvc_updateentertime:
-			(void) MSG_ReadByte ();
-			(void) MSG_ReadFloat ();
+			i = MSG_ReadByte ();
+			if (i < QW_MAX_CLIENTS && cl.scores)
+				cl.scores[i].entertime = realtime - MSG_ReadFloat ();
+			else
+				(void) MSG_ReadFloat ();
 			break;
 
 		case qwsvc_setpause:

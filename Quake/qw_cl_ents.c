@@ -29,6 +29,12 @@ int			qw_playerindex = -1;
 int			qw_spikeindex = -1;
 int			qw_flagindex = -1;
 
+// Colored player skins (shirt/pants): the engine keeps one translated texture
+// per scoreboard slot; rebuild it only when a player's model or skin changes.
+extern gltexture_t	*playertextures[MAX_SCOREBOARD];
+static int		qw_translate_model[QW_MAX_CLIENTS];
+static int		qw_translate_skin[QW_MAX_CLIENTS];
+
 // Snapshot ring keyed by the server packet sequence, so a delta can copy any of
 // the recently received frames forward.
 static qw_packet_entities_t	qw_snapshots[QW_UPDATE_BACKUP];
@@ -67,6 +73,8 @@ void CLQW_ClearEntities (void)
 	qw_snap_seq = 0;
 	qw_parsecount = 0;
 	qw_playerindex = qw_spikeindex = qw_flagindex = -1;
+	memset (qw_translate_model, -1, sizeof(qw_translate_model));
+	memset (qw_translate_skin, -1, sizeof(qw_translate_skin));
 	CLQW_ClearProjectiles ();
 }
 
@@ -378,7 +386,7 @@ static void CLQW_LinkPacketEntities (void)
 		ent->skinnum = s1->skinnum;
 		ent->alpha = 0;			// ENTALPHA_DEFAULT -> opaque
 		ent->scale = ENTSCALE_DEFAULT;	// CL_EntityNum only primes baseline.scale
-		ent->colormap = NULL;
+		ent->colormap = vid.colormap;	// no player-color translation
 		ent->effects = s1->effects;
 
 		// rotate bonus items in place; everything else takes server angles
@@ -462,8 +470,23 @@ static void CLQW_LinkPlayers (void)
 		ent->skinnum = pl->skinnum;
 		ent->alpha = 0;
 		ent->scale = ENTSCALE_DEFAULT;
-		ent->colormap = NULL;
 		ent->effects = pl->effects;
+
+		// shirt/pants colors: rebuild the translated skin when the model or
+		// skin changes, then point colormap at the slot so the renderer swaps
+		// in playertextures[]. Slots past MAX_SCOREBOARD keep the stock skin.
+		if (j < MAX_SCOREBOARD && cl.scores)
+		{
+			if (qw_translate_model[j] != pl->modelindex || qw_translate_skin[j] != pl->skinnum)
+			{
+				qw_translate_model[j] = pl->modelindex;
+				qw_translate_skin[j] = pl->skinnum;
+				R_TranslateNewPlayerSkin (j);	// reads cl_entities[j+1] (= ent)
+			}
+			ent->colormap = playertextures[j] ? cl.scores[j].translations : vid.colormap;
+		}
+		else
+			ent->colormap = vid.colormap;
 
 		// lean the model from its own view pitch, bank it into turns
 		ent->angles[0] = -pl->viewangles[0] / 3;
@@ -532,6 +555,7 @@ static void CLQW_LinkProjectiles (void)
 		ent->model = model;
 		ent->alpha = 0;
 		ent->scale = ENTSCALE_DEFAULT;
+		ent->colormap = vid.colormap;
 		VectorCopy (pr->origin, ent->origin);
 		VectorCopy (pr->angles, ent->angles);
 		cl_visedicts[cl_numvisedicts++] = ent;
