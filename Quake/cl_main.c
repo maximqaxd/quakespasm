@@ -162,6 +162,14 @@ void CL_EstablishConnection (const char *host)
 
 	CL_Disconnect ();
 
+#if defined(USE_QW_PROTOCOL)
+	if (cls.protofamily == PROTO_QW)
+	{	// QuakeWorld connects connectionlessly on its own netchan
+		CLQW_EstablishConnection (host);
+		return;
+	}
+#endif
+
 	cls.netcon = NET_Connect (host);
 	if (!cls.netcon)
 		Host_Error ("CL_Connect: connect failed");
@@ -837,5 +845,9 @@ void CL_Init (void)
 
 	Cmd_AddCommand ("tracepos", CL_Tracepos_f); //johnfitz
 	Cmd_AddCommand ("viewpos", CL_Viewpos_f); //johnfitz
+
+#if defined(USE_QW_PROTOCOL)
+	CLQW_Init ();	// QuakeWorld socket + netchan (runtime-selected via connect)
+#endif
 }
 

@@ -1011,8 +1011,18 @@ static void Host_Connect_f (void)
 		CL_StopPlayback ();
 		CL_Disconnect ();
 	}
+#if defined(USE_QW_PROTOCOL)
+	// Protocol family select: "connect <addr> [qw]". Default is NetQuake; an
+	// explicit "qw" (or a QW server address, later) picks QuakeWorld.
+	cls.protofamily = PROTO_NQ;
+	if (Cmd_Argc () >= 3 && !q_strcasecmp (Cmd_Argv(2), "qw"))
+		cls.protofamily = PROTO_QW;
+#endif
 	q_strlcpy (name, Cmd_Argv(1), sizeof(name));
 	CL_EstablishConnection (name);
+#if defined(USE_QW_PROTOCOL)
+	if (cls.protofamily != PROTO_QW)	// NetQuake signon handshake; QW drives its own
+#endif
 	Host_Reconnect_f ();
 }
 

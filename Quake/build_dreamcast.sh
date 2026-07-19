@@ -32,6 +32,8 @@ GAME_NAME="quakespasm"
 JOBS="${JOBS:-$(nproc 2>/dev/null || echo 4)}"
 # Native PVR renderer on by default. Override with USE_PVR_RENDER=0 for the GLdc path.
 USE_PVR_RENDER="${USE_PVR_RENDER:-1}"
+# QuakeWorld protocol (client) built in; runtime opt-in via "connect <addr> qw".
+USE_QW_PROTOCOL="${USE_QW_PROTOCOL:-1}"
 
 # --- Locate and source the KOS environment -------------------------------
 if [ -z "$KOS_BASE" ]; then
@@ -50,8 +52,8 @@ if [ -z "$KOS_BASE" ]; then
 fi
 
 build_elf() {
-    echo ">> Building $TARGET_ELF (jobs=$JOBS, USE_PVR_RENDER=$USE_PVR_RENDER)"
-    make -f Makefile.dreamcast -j"$JOBS" USE_PVR_RENDER="$USE_PVR_RENDER"
+    echo ">> Building $TARGET_ELF (jobs=$JOBS, USE_PVR_RENDER=$USE_PVR_RENDER, USE_QW_PROTOCOL=$USE_QW_PROTOCOL)"
+    make -f Makefile.dreamcast -j"$JOBS" USE_PVR_RENDER="$USE_PVR_RENDER" USE_QW_PROTOCOL="$USE_QW_PROTOCOL"
 }
 
 build_cdi() {
@@ -88,7 +90,7 @@ build_cdi() {
 case "${1:-all}" in
     elf)    build_elf ;;
     cdi)    build_cdi ;;
-    clean)  make -f Makefile.dreamcast clean USE_PVR_RENDER="$USE_PVR_RENDER"; rm -f "$TARGET_CDI" ;;
+    clean)  make -f Makefile.dreamcast clean USE_PVR_RENDER="$USE_PVR_RENDER" USE_QW_PROTOCOL="$USE_QW_PROTOCOL"; rm -f "$TARGET_CDI" ;;
     all|"") build_elf; build_cdi ;;
     *)      echo "usage: $0 [all|elf|cdi|clean]" >&2; exit 1 ;;
 esac

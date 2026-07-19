@@ -285,6 +285,8 @@ typedef struct
 #include "view.h"
 #include "sbar.h"
 #include "q_sound.h"
+#include "qw_local.h"	// QuakeWorld protocol family (self-guarded by USE_QW_PROTOCOL)
+#include "qw_net.h"	// QuakeWorld netadr/netchan (embedded in client_static_t)
 #include "client.h"
 
 #include "gl_model.h"

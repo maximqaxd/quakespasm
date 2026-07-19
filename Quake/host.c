@@ -784,6 +784,12 @@ void _Host_Frame (float time)
 	if (cls.state == ca_connected)
 		CL_ReadFromServer ();
 
+#if defined(USE_QW_PROTOCOL)
+// QuakeWorld drives its own connectionless handshake + netchan pump
+	if (cls.protofamily == PROTO_QW)
+		CLQW_RunConnection ();
+#endif
+
 // update video
 	if (host_speeds.value)
 		time1 = Sys_DoubleTime ();

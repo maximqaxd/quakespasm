@@ -131,6 +131,16 @@ typedef struct
 	struct qsocket_s	*netcon;
 	sizebuf_t	message;		// writing buffer to send to server
 
+#if defined(USE_QW_PROTOCOL)
+// QuakeWorld connection state (only used while protofamily == PROTO_QW)
+	int		protofamily;		// protofamily_t: PROTO_NQ (default) or PROTO_QW
+	int		qport;			// our random NAT-punch port, sent in every netchan packet
+	int		challenge;		// challenge value from the server's getchallenge reply
+	double		qw_connect_time;	// realtime of the last getchallenge/connect send (-1 = idle)
+	qw_netadr_t	qw_server_adr;		// address we are connecting/connected to
+	qw_netchan_t	netchan;		// the QW sequenced channel
+#endif
+
 } client_static_t;
 
 extern client_static_t	cls;

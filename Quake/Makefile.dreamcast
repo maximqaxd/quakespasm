@@ -146,7 +146,19 @@ SYSOBJ_TEXMGR = pvr_texmgr.o
 SYSOBJ_DRAW   = pvr_draw.o
 endif
 
-OBJS = strlcat.o strlcpy.o $(PVR_OBJS) \
+# ---------------------------
+# QuakeWorld protocol (WIP) -- client-only, runtime-selectable alongside the
+# native NetQuake path via the connect command. Opt-in while it's being built:
+#   make -f Makefile.dreamcast USE_QW_PROTOCOL=1
+# ---------------------------
+USE_QW_PROTOCOL ?= 0
+QW_OBJS =
+ifeq ($(USE_QW_PROTOCOL),1)
+CFLAGS  += -DUSE_QW_PROTOCOL
+QW_OBJS = qw_net.o qw_netchan.o qw_cl_main.o
+endif
+
+OBJS = strlcat.o strlcpy.o $(PVR_OBJS) $(QW_OBJS) \
 	$(GLOBJS) \
 	$(SYSOBJ_INPUT) $(COMOBJ_SND) $(SYSOBJ_SND) $(SYSOBJ_CDA) \
 	$(SYSOBJ_NET) net_dgrm.o net_loop.o net_main.o \
