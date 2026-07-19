@@ -45,6 +45,13 @@ void M_Menu_Main_f (void);
 		void M_Menu_Video_f (void);
 	void M_Menu_Help_f (void);
 	void M_Menu_Quit_f (void);
+#if defined(USE_QW_PROTOCOL)
+		void M_Menu_QWList_f (void);
+		void M_QWList_Draw (void);
+		void M_QWList_Key (int key);
+		void M_QWList_Char (int key);
+		qboolean M_QWList_TextEntry (void);
+#endif
 
 void M_Main_Draw (void);
 	void M_SinglePlayer_Draw (void);
@@ -677,8 +684,12 @@ void M_MultiPlayer_Key (int key)
 		switch (m_multiplayer_cursor)
 		{
 		case 0:
+#if defined(USE_QW_PROTOCOL)
+			M_Menu_QWList_f ();	// Join a Game -> QuakeWorld server browser
+#else
 			if (ipxAvailable || tcpipAvailable)
 				M_Menu_Net_f ();
+#endif
 			break;
 
 		case 1:
@@ -985,6 +996,152 @@ again:
 	if (m_net_cursor == 1 && !tcpipAvailable)
 		goto again;
 }
+
+#if defined(USE_QW_PROTOCOL)
+//=============================================================================
+/* QUAKEWORLD SERVER BROWSER */
+
+#define	QWLIST_HEADER	2	// address field + refresh action
+#define	QWLIST_ROWS	14	// visible server rows
+
+static int	qwlist_cursor;		// 0=address, 1=refresh, 2+=server rows
+static int	qwlist_scroll;		// first visible server index
+static char	qwlist_address[32];
+
+void M_Menu_QWList_f (void)
+{
+	IN_Deactivate (modestate == MS_WINDOWED);
+	key_dest = key_menu;
+	m_state = m_qwlist;
+	m_entersound = true;
+}
+
+void M_QWList_Draw (void)
+{
+	qpic_t	*p;
+	int	i, y;
+
+	M_DrawTransPic (16, 4, Draw_CachePic ("gfx/qplaque.lmp"));
+	p = Draw_CachePic ("gfx/p_multi.lmp");
+	M_DrawPic ((320 - p->width) / 2, 4, p);
+
+	M_Print (72, 32, "QuakeWorld");
+
+	// direct-connect address field
+	M_Print (16, 48, "Connect");
+	M_DrawTextBox (80, 40, 22, 1);
+	M_Print (88, 48, qwlist_address);
+	if (qwlist_cursor == 0)
+		M_DrawCharacter (88 + 8 * strlen (qwlist_address), 48, 10 + ((int)(realtime * 4) & 1));
+
+	// refresh action
+	M_Print (16, 64, "Refresh from master");
+
+	// the received server list
+	y = 80;
+	if (qw_numservers == 0)
+		M_Print (24, y, "no servers -- Refresh");
+	else for (i = 0; i < QWLIST_ROWS && qwlist_scroll + i < qw_numservers; i++)
+		M_Print (24, y + i * 8, QWNET_AdrToString (qw_serverlist[qwlist_scroll + i]));
+
+	// blinking cursor
+	if (qwlist_cursor == 1)
+		M_DrawCharacter (8, 64, 12 + ((int)(realtime * 4) & 1));
+	else if (qwlist_cursor >= QWLIST_HEADER)
+	{
+		int row = qwlist_cursor - QWLIST_HEADER - qwlist_scroll;
+		if (row >= 0 && row < QWLIST_ROWS)
+			M_DrawCharacter (16, y + row * 8, 12 + ((int)(realtime * 4) & 1));
+	}
+}
+
+static void M_QWList_Connect (const char *addr)
+{
+	if (!addr || !addr[0])
+		return;
+	key_dest = key_game;
+	m_state = m_none;
+	IN_Activate ();
+	Cbuf_AddText (va ("connect \"%s\" qw\n", addr));
+}
+
+void M_QWList_Key (int key)
+{
+	int	items = QWLIST_HEADER + qw_numservers;
+
+	switch (key)
+	{
+	case K_ESCAPE:
+	case K_BBUTTON:
+		M_Menu_MultiPlayer_f ();
+		return;
+
+	case K_UPARROW:
+		S_LocalSound ("misc/menu1.wav");
+		if (--qwlist_cursor < 0)
+			qwlist_cursor = items - 1;
+		break;
+
+	case K_DOWNARROW:
+		S_LocalSound ("misc/menu1.wav");
+		if (++qwlist_cursor >= items)
+			qwlist_cursor = 0;
+		break;
+
+	case K_ENTER:
+	case K_KP_ENTER:
+	case K_ABUTTON:
+		m_entersound = true;
+		if (qwlist_cursor == 0)
+			M_QWList_Connect (qwlist_address);
+		else if (qwlist_cursor == 1)
+			CLQW_SList_Query (NULL);
+		else
+			M_QWList_Connect (QWNET_AdrToString (qw_serverlist[qwlist_cursor - QWLIST_HEADER]));
+		break;
+
+	case K_BACKSPACE:
+		if (qwlist_cursor == 0 && qwlist_address[0])
+			qwlist_address[strlen (qwlist_address) - 1] = 0;
+		break;
+
+	default:
+		break;
+	}
+
+	// keep the scroll window around the highlighted server
+	if (qwlist_cursor >= QWLIST_HEADER)
+	{
+		int sidx = qwlist_cursor - QWLIST_HEADER;
+		if (sidx < qwlist_scroll)
+			qwlist_scroll = sidx;
+		else if (sidx >= qwlist_scroll + QWLIST_ROWS)
+			qwlist_scroll = sidx - QWLIST_ROWS + 1;
+	}
+	else
+		qwlist_scroll = 0;
+}
+
+void M_QWList_Char (int key)
+{
+	int	l;
+
+	if (qwlist_cursor != 0)
+		return;
+	l = strlen (qwlist_address);
+	if (l < (int)sizeof(qwlist_address) - 1 && key >= 32 && key < 128)
+	{
+		qwlist_address[l] = key;
+		qwlist_address[l + 1] = 0;
+	}
+}
+
+qboolean M_QWList_TextEntry (void)
+{
+	return qwlist_cursor == 0;
+}
+
+#endif	/* USE_QW_PROTOCOL */
 
 //=============================================================================
 /* OPTIONS MENU */
@@ -2677,6 +2834,11 @@ void M_Draw (void)
 	case m_slist:
 		M_ServerList_Draw ();
 		break;
+#if defined(USE_QW_PROTOCOL)
+	case m_qwlist:
+		M_QWList_Draw ();
+		break;
+#endif
 	}
 
 	if (m_entersound)
@@ -2759,6 +2921,11 @@ void M_Keydown (int key)
 	case m_slist:
 		M_ServerList_Key (key);
 		return;
+#if defined(USE_QW_PROTOCOL)
+	case m_qwlist:
+		M_QWList_Key (key);
+		return;
+#endif
 	}
 }
 
@@ -2776,6 +2943,11 @@ void M_Charinput (int key)
 	case m_lanconfig:
 		M_LanConfig_Char (key);
 		return;
+#if defined(USE_QW_PROTOCOL)
+	case m_qwlist:
+		M_QWList_Char (key);
+		return;
+#endif
 	default:
 		return;
 	}
@@ -2792,6 +2964,10 @@ qboolean M_TextEntry (void)
 		return M_Quit_TextEntry ();
 	case m_lanconfig:
 		return M_LanConfig_TextEntry ();
+#if defined(USE_QW_PROTOCOL)
+	case m_qwlist:
+		return M_QWList_TextEntry ();
+#endif
 	default:
 		return false;
 	}
