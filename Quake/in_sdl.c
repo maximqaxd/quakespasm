@@ -1013,11 +1013,150 @@ static void IN_DebugKeyEvent(SDL_Event *event)
 #endif
 }
 
+#if defined(PLATFORM_DREAMCAST)
+/*
+================================================================================
+Direct KallistiOS maple keyboard + mouse input.
+
+The Dreamcast SDL video driver's PumpEvents is supposed to poll the maple
+keyboard/mouse, but in practice those events don't reach us, so read the devices
+straight from KOS and feed Key_Event / Char_Event / the mouse accumulators.
+The controller still comes through the SDL joystick path.
+================================================================================
+*/
+#include <dc/maple.h>
+#include <dc/maple/keyboard.h>
+#include <dc/maple/mouse.h>
+
+// KOS/USB-HID keycode -> Quake key. Printable keys hold their base ASCII (also
+// the seed for the shifted text character); specials hold a K_* code.
+static const int dc_key[104] =
+{
+	0, 0, 0, 0,						// 0-3
+	'a','b','c','d','e','f','g','h','i','j','k','l','m',	// 4-16
+	'n','o','p','q','r','s','t','u','v','w','x','y','z',	// 17-29
+	'1','2','3','4','5','6','7','8','9','0',			// 30-39
+	K_ENTER, K_ESCAPE, K_BACKSPACE, K_TAB, K_SPACE,		// 40-44
+	'-','=','[',']','\\', 0, ';','\'','`',',','.','/',	// 45-56 (50 = non-US #)
+	0,							// 57 caps lock (toggle only)
+	K_F1,K_F2,K_F3,K_F4,K_F5,K_F6,K_F7,K_F8,K_F9,K_F10,K_F11,K_F12, // 58-69
+	0, 0, 0,						// 70-72 prtsc/scroll/pause
+	K_INS, K_HOME, K_PGUP, K_DEL, K_END, K_PGDN,		// 73-78
+	K_RIGHTARROW, K_LEFTARROW, K_DOWNARROW, K_UPARROW,	// 79-82
+	0,							// 83 num lock
+	'/','*','-','+', K_ENTER,				// 84-88 keypad ops
+	'1','2','3','4','5','6','7','8','9','0','.',		// 89-99 keypad digits
+	0, 0, 0, 0						// 100-103
+};
+
+static int DC_ShiftChar (int c)
+{
+	switch (c)
+	{
+	case '1': return '!'; case '2': return '@'; case '3': return '#';
+	case '4': return '$'; case '5': return '%'; case '6': return '^';
+	case '7': return '&'; case '8': return '*'; case '9': return '(';
+	case '0': return ')'; case '-': return '_'; case '=': return '+';
+	case '[': return '{'; case ']': return '}'; case '\\': return '|';
+	case ';': return ':'; case '\'': return '"'; case '`': return '~';
+	case ',': return '<'; case '.': return '>'; case '/': return '?';
+	default:
+		if (c >= 'a' && c <= 'z') return c - 'a' + 'A';
+		return c;
+	}
+}
+
+static void IN_DreamcastMouse (void)
+{
+	maple_device_t	*dev = maple_enum_type (0, MAPLE_FUNC_MOUSE);
+	mouse_state_t	*m;
+	static uint32	last = 0;
+	uint32		b;
+
+	if (!dev || !(m = (mouse_state_t *)maple_dev_status (dev)))
+		return;
+
+	total_dx += m->dx;			// same accumulators IN_MouseMove drains
+	total_dy += m->dy;
+
+	b = m->buttons;				// 1-bit = pressed
+	if ((b ^ last) & MOUSE_LEFTBUTTON)  Key_Event (K_MOUSE1, (b & MOUSE_LEFTBUTTON) != 0);
+	if ((b ^ last) & MOUSE_RIGHTBUTTON) Key_Event (K_MOUSE2, (b & MOUSE_RIGHTBUTTON) != 0);
+	if ((b ^ last) & MOUSE_SIDEBUTTON)  Key_Event (K_MOUSE3, (b & MOUSE_SIDEBUTTON) != 0);
+	last = b;
+
+	if (m->dz > 0)		{ Key_Event (K_MWHEELDOWN, true); Key_Event (K_MWHEELDOWN, false); }
+	else if (m->dz < 0)	{ Key_Event (K_MWHEELUP, true);   Key_Event (K_MWHEELUP, false); }
+}
+
+static void IN_DreamcastKeyboard (void)
+{
+	maple_device_t	*dev = maple_enum_type (0, MAPLE_FUNC_KEYBOARD);
+	kbd_state_t	*kbd;
+	static uint8	down[104];
+	static uint8	lastmods = 0;
+	static qboolean	caps = false;
+	uint8		mods;
+	qboolean	shift;
+	int		i;
+
+	if (!dev || !(kbd = (kbd_state_t *)maple_dev_status (dev)))
+		return;
+
+	mods = kbd->cond.modifiers.raw;
+	if ((mods ^ lastmods) & KBD_MOD_SHIFT) Key_Event (K_SHIFT, (mods & KBD_MOD_SHIFT) != 0);
+	if ((mods ^ lastmods) & KBD_MOD_CTRL)  Key_Event (K_CTRL,  (mods & KBD_MOD_CTRL) != 0);
+	if ((mods ^ lastmods) & KBD_MOD_ALT)   Key_Event (K_ALT,   (mods & KBD_MOD_ALT) != 0);
+	lastmods = mods;
+	shift = (mods & KBD_MOD_SHIFT) != 0;
+
+	for (i = 4; i < (int)sizeof(down); i++)
+	{
+		uint8	is = kbd->key_states[i].is_down ? 1 : 0;
+		int	key;
+
+		if (is == down[i])
+			continue;		// no edge
+		down[i] = is;
+
+		if (i == 57 && is)		// caps lock toggles on press
+			caps = !caps;
+
+		key = dc_key[i];
+		if (!key)
+			continue;
+
+		Key_Event (key, is);
+
+		// printable keys also produce a text character while a field is focused
+		if (is && textmode && key >= 32 && key < 127)
+		{
+			int ch = key;
+			if (shift)
+				ch = DC_ShiftChar (key);
+			else if (caps && key >= 'a' && key <= 'z')
+				ch = key - 'a' + 'A';
+			Char_Event (ch);
+		}
+	}
+}
+
+void IN_DreamcastPoll (void)
+{
+	IN_DreamcastMouse ();
+	IN_DreamcastKeyboard ();
+}
+#endif	/* PLATFORM_DREAMCAST */
+
 void IN_SendKeyEvents (void)
 {
 	SDL_Event event;
 	int key;
 	qboolean down;
+
+#if defined(PLATFORM_DREAMCAST)
+	IN_DreamcastPoll ();		// maple keyboard/mouse (SDL doesn't deliver them)
+#endif
 
 	while (SDL_PollEvent(&event))
 	{
