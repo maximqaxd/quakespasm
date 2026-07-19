@@ -1106,6 +1106,9 @@ void SCR_UpdateScreen (void)
 		SCR_DrawClock (); //johnfitz
 		SCR_DrawConsole ();
 		M_Draw ();
+#if defined(PLATFORM_DREAMCAST)
+		OSK_Draw ();	// on-screen keyboard overlay (controller text entry)
+#endif
 	}
 
 	V_UpdateBlend (); //johnfitz -- V_UpdatePalette cleaned up and renamed

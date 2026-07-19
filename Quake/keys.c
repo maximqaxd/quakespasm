@@ -832,6 +832,10 @@ void Key_Init (void)
 
 	History_Init ();
 
+#if defined(PLATFORM_DREAMCAST)
+	OSK_Init ();
+#endif
+
 	key_blinktime = realtime; //johnfitz
 
 //
@@ -975,6 +979,12 @@ void Key_EventWithKeycode (int key, qboolean down, int keycode)
 
 	if (key < 0 || key >= MAX_KEYS)
 		return;
+
+#if defined(PLATFORM_DREAMCAST)
+	// the on-screen keyboard steals navigation/select while a field is focused
+	if (OSK_KeyEvent (key, down))
+		return;
+#endif
 
 // handle fullscreen toggle
 	if (down && (key == K_ENTER || key == K_KP_ENTER) && keydown[K_ALT])

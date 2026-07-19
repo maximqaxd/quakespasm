@@ -186,6 +186,13 @@ void Key_EventWithKeycode (int key, qboolean down, int keycode);
 void Char_Event (int key);
 qboolean Key_TextEntry (void);
 
+// on-screen keyboard (osk.c) -- controller text entry on the Dreamcast
+void OSK_Init (void);
+qboolean OSK_Active (void);
+qboolean OSK_KeyEvent (int key, qboolean down);
+void OSK_Draw (void);
+qboolean IN_HasKeyboard (void);		// in_sdl.c
+
 void Key_SetBinding (int keynum, const char *binding);
 const char *Key_KeynumToString (int keynum);
 void Key_WriteBindings (FILE *f);

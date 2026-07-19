@@ -1028,6 +1028,11 @@ The controller still comes through the SDL joystick path.
 #include <dc/maple/keyboard.h>
 #include <dc/maple/mouse.h>
 
+// Set once the maple keyboard actually delivers a keypress. Device presence
+// alone isn't enough -- emulators expose a keyboard that never sends keys -- so
+// the on-screen keyboard keys off real activity, not enumeration.
+static qboolean	dc_kbd_seen = false;
+
 // KOS/USB-HID keycode -> Quake key. Printable keys hold their base ASCII (also
 // the seed for the shifted text character); specials hold a K_* code.
 static const int dc_key[104] =
@@ -1119,6 +1124,9 @@ static void IN_DreamcastKeyboard (void)
 			continue;		// no edge
 		down[i] = is;
 
+		if (is)
+			dc_kbd_seen = true;	// a real keyboard is present and working
+
 		if (i == 57 && is)		// caps lock toggles on press
 			caps = !caps;
 
@@ -1147,6 +1155,17 @@ void IN_DreamcastPoll (void)
 	IN_DreamcastKeyboard ();
 }
 #endif	/* PLATFORM_DREAMCAST */
+
+// True once a hardware keyboard has actually typed; the on-screen keyboard hides
+// then. Not based on device enumeration -- emulators expose a dead keyboard.
+qboolean IN_HasKeyboard (void)
+{
+#if defined(PLATFORM_DREAMCAST)
+	return dc_kbd_seen;
+#else
+	return true;
+#endif
+}
 
 void IN_SendKeyEvents (void)
 {
