@@ -277,6 +277,69 @@ extern vec3_t		qw_simorg;		// predicted view origin
 extern vec3_t		qw_simvel;		// predicted velocity
 extern vec3_t		qw_simangles;		// predicted view angles
 
+// --- entity snapshots (phase 3b) ---------------------------------------------
+// QW streams the world as delta-compressed packet-entity snapshots: each server
+// frame carries only what changed since a previous frame the client still holds.
+// We decode those into a snapshot ring, then stamp the engine's persistent
+// cl_entities[] and push pointers into cl_visedicts[] each rendered frame.
+
+// QW entity-effect bits above the four NetQuake shares (BRIGHTLIGHT/DIMLIGHT).
+#define	QWEF_FLAG1	16
+#define	QWEF_FLAG2	32
+#define	QWEF_BLUE	64
+#define	QWEF_RED	128
+
+#define	QW_MAX_CLIENTS		32
+#define	QW_MAX_EDICTS		512	// entity number is 9 bits in the delta word
+#define	QW_MAX_PACKET_ENTITIES	64	// most entities in one snapshot
+
+typedef struct
+{
+	int	number;		// edict index this state belongs to
+	int	flags;		// QWU_* bits that were present
+	vec3_t	origin;
+	vec3_t	angles;
+	int	modelindex;
+	int	frame;
+	int	colormap;
+	int	skinnum;
+	int	effects;
+} qw_entity_state_t;
+
+typedef struct
+{
+	int			num_entities;
+	qw_entity_state_t	entities[QW_MAX_PACKET_ENTITIES];
+} qw_packet_entities_t;
+
+extern qw_entity_state_t	qw_baselines[QW_MAX_EDICTS];
+
+// Other players are delivered as playerinfo, not packet entities; keep the last
+// state per slot for rendering (our own slot is driven by prediction instead).
+typedef struct
+{
+	int	messagenum;	// == qw_parsecount on the frame this was received
+	vec3_t	origin;
+	vec3_t	viewangles;
+	vec3_t	velocity;
+	int	modelindex;
+	int	frame;
+	int	skinnum;
+	int	effects;
+	int	flags;
+} qw_player_render_t;
+
+extern qw_player_render_t	qw_players[QW_MAX_CLIENTS];
+extern int			qw_parsecount;	// bumped per server message
+
+// entity parsing / linking (qw_cl_ents.c)
+void	CLQW_ClearEntities (void);		// wipe snapshot/baseline state
+void	CLQW_ParseBaseline (int num);		// into qw_baselines[num]
+void	CLQW_ParsePacketEntities (qboolean delta);
+void	CLQW_ParseProjectiles (void);		// svc_nails
+void	CLQW_ClearProjectiles (void);
+void	CLQW_EmitEntities (void);		// build cl_visedicts for this frame
+
 // player physics (qw_pmove.c)
 extern qw_playermove_t	qw_pmove;
 extern int		qw_onground;

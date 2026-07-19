@@ -197,7 +197,10 @@ void CLQW_RunConnection (void)
 	// simulate our position forward from the last snapshot so the view follows
 	// input immediately instead of after a network round trip.
 	if (qw_connstate == QWCS_CONNECTED)
+	{
 		CLQW_PredictMove ();
+		CLQW_EmitEntities ();	// rebuild the visible-entity list for this frame
+	}
 }
 
 /*

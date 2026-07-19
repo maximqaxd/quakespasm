@@ -33,6 +33,7 @@ static void CLQW_ParseServerData (void)
 	Con_DPrintf ("[QW] serverdata packet received\n");
 
 	CL_ClearState ();
+	CLQW_ClearEntities ();
 
 	protover = MSG_ReadLong ();
 	if (protover != QW_PROTOCOL_VERSION)
@@ -176,12 +177,12 @@ static void CLQW_ParseModellist (void)
 
 /*
 ==============
-CLQW_ParseBaseline -- read (and for now discard) an entity baseline: modelindex,
-frame, colormap, skinnum, origin[3]/angles[3]. Storing baselines for delta
-decompression is phase 3; this keeps the byte stream in sync until then.
+CLQW_ParseStatic -- svc_spawnstatic: a permanent, unmoving entity (torches and
+the like). We read the baseline-shaped payload; rendering statics is a later
+step, so for now this just keeps the byte stream in sync.
 ==============
 */
-static void CLQW_ParseBaseline (void)
+static void CLQW_ParseStatic (void)
 {
 	int	i;
 
@@ -197,9 +198,8 @@ static void CLQW_ParseBaseline (void)
 }
 
 // ---------------------------------------------------------------------------
-// Game-frame parsing (phase 3a): consume every per-frame opcode so the stream
-// stays in sync, and drive the view from our own player's origin. Linking the
-// other entities/players into the render list is phase 3b.
+// Game-frame parsing: consume every per-frame opcode, drive the view from our
+// own player's origin (prediction), and hand entity snapshots to qw_cl_ents.c.
 // ---------------------------------------------------------------------------
 
 // A QW usercmd delta (inside playerinfo PF_COMMAND). We only need to skip it.
@@ -268,45 +268,6 @@ static void CLQW_ParsePlayerinfo (void)
 	}
 }
 
-// A single packetentities delta -- we only need to skip the encoded fields.
-static void CLQW_SkipEntityDelta (int bits)
-{
-	if (bits & QWU_MODEL)    (void) MSG_ReadByte ();
-	if (bits & QWU_FRAME)    (void) MSG_ReadByte ();
-	if (bits & QWU_COLORMAP) (void) MSG_ReadByte ();
-	if (bits & QWU_SKIN)     (void) MSG_ReadByte ();
-	if (bits & QWU_EFFECTS)  (void) MSG_ReadByte ();
-	if (bits & QWU_ORIGIN1)  (void) MSG_ReadCoord (0);
-	if (bits & QWU_ANGLE1)   (void) MSG_ReadAngle (0);
-	if (bits & QWU_ORIGIN2)  (void) MSG_ReadCoord (0);
-	if (bits & QWU_ANGLE2)   (void) MSG_ReadAngle (0);
-	if (bits & QWU_ORIGIN3)  (void) MSG_ReadCoord (0);
-	if (bits & QWU_ANGLE3)   (void) MSG_ReadAngle (0);
-	// QWU_SOLID carries no data
-}
-
-// svc_packetentities / svc_deltapacketentities: the delta-compressed entity list.
-static void CLQW_ParsePacketEntities (qboolean delta)
-{
-	int	word, bits;
-
-	if (delta)
-		(void) MSG_ReadByte ();		// frame we are delta'ing from
-
-	for (;;)
-	{
-		word = (unsigned short) MSG_ReadShort ();
-		if (msg_badread || word == 0)
-			break;			// end of the entity list
-		bits = word & ~511;		// entity number is the low 9 bits
-		if (bits & QWU_MOREBITS)
-			bits |= MSG_ReadByte ();
-		if (bits & QWU_REMOVE)
-			continue;		// removal carries no fields
-		CLQW_SkipEntityDelta (bits);
-	}
-}
-
 // svc_sound: play a precached sound at a world position.
 static void CLQW_ParseSound (void)
 {
@@ -361,6 +322,8 @@ void CLQW_ParseServerMessage (void)
 	int	cmd, i;
 	const char *s;
 
+	qw_parsecount++;	// one server message = one frame of entity/player state
+
 	while (1)
 	{
 		if (msg_badread)
@@ -414,12 +377,12 @@ void CLQW_ParseServerMessage (void)
 			break;
 
 		case qwsvc_spawnbaseline:
-			(void) MSG_ReadShort ();	// entity number
-			CLQW_ParseBaseline ();
+			i = MSG_ReadShort ();		// entity number
+			CLQW_ParseBaseline (i);
 			break;
 
 		case qwsvc_spawnstatic:
-			CLQW_ParseBaseline ();		// static entity uses the same layout
+			CLQW_ParseStatic ();
 			break;
 
 		case qwsvc_spawnstaticsound:

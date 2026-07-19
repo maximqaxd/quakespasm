@@ -1,0 +1,296 @@
+/*
+================================================================================
+qw_cl_ents.c -- QuakeWorld entity snapshots (phase 3b)
+
+QW does not resend the whole world each frame: a snapshot carries only the
+entities that changed since an earlier frame the client still holds, plus a list
+of removals. We rebuild the full entity set by copying that older snapshot
+forward and applying the deltas, then stamp the engine's persistent cl_entities[]
+and push pointers into cl_visedicts[] so the renderer draws them.
+
+Entity numbers 1..QW_MAX_CLIENTS are players (delivered separately as
+playerinfo); packet entities are everything else -- items, projectiles, gibs,
+doors. New entities delta against their spawn baseline; existing ones against
+their previous state.
+================================================================================
+*/
+#include "quakedef.h"
+
+#if defined(USE_QW_PROTOCOL)
+
+#include "qw_local.h"
+#include "qw_net.h"
+
+qw_entity_state_t	qw_baselines[QW_MAX_EDICTS];
+qw_player_render_t	qw_players[QW_MAX_CLIENTS];
+int			qw_parsecount;
+
+// Snapshot ring keyed by the server packet sequence, so a delta can copy any of
+// the recently received frames forward.
+static qw_packet_entities_t	qw_snapshots[QW_UPDATE_BACKUP];
+static int			qw_snap_seq;	// sequence of the newest snapshot
+static qboolean			qw_have_snap;	// a full frame is available to link
+
+/*
+==============
+CLQW_ClearEntities -- wipe the snapshot/baseline/player state at level change.
+==============
+*/
+void CLQW_ClearEntities (void)
+{
+	memset (qw_baselines, 0, sizeof(qw_baselines));
+	memset (qw_snapshots, 0, sizeof(qw_snapshots));
+	memset (qw_players, 0, sizeof(qw_players));
+	qw_have_snap = false;
+	qw_snap_seq = 0;
+	qw_parsecount = 0;
+}
+
+/*
+==============
+CLQW_ParseBaseline -- svc_spawnbaseline: the default state a numbered entity
+delta-compresses against when it first appears.
+==============
+*/
+void CLQW_ParseBaseline (int num)
+{
+	qw_entity_state_t	scratch;
+	qw_entity_state_t	*es;
+	int			i;
+
+	es = (num >= 0 && num < QW_MAX_EDICTS) ? &qw_baselines[num] : &scratch;
+	memset (es, 0, sizeof(*es));
+
+	es->modelindex = MSG_ReadByte ();
+	es->frame      = MSG_ReadByte ();
+	es->colormap   = MSG_ReadByte ();
+	es->skinnum    = MSG_ReadByte ();
+	for (i = 0; i < 3; i++)
+	{
+		es->origin[i] = MSG_ReadCoord (0);
+		es->angles[i] = MSG_ReadAngle (0);
+	}
+	es->number = num;
+}
+
+/*
+==================
+CLQW_ParseDelta -- apply one entity's changed fields on top of a source state
+(either its baseline or its previous snapshot entry).
+==================
+*/
+static void CLQW_ParseDelta (qw_entity_state_t *from, qw_entity_state_t *to, int bits)
+{
+	*to = *from;
+
+	to->number = bits & 511;
+	bits &= ~511;
+
+	if (bits & QWU_MOREBITS)
+		bits |= MSG_ReadByte ();
+	to->flags = bits;
+
+	if (bits & QWU_MODEL)    to->modelindex = MSG_ReadByte ();
+	if (bits & QWU_FRAME)    to->frame      = MSG_ReadByte ();
+	if (bits & QWU_COLORMAP) to->colormap   = MSG_ReadByte ();
+	if (bits & QWU_SKIN)     to->skinnum    = MSG_ReadByte ();
+	if (bits & QWU_EFFECTS)  to->effects    = MSG_ReadByte ();
+	if (bits & QWU_ORIGIN1)  to->origin[0]  = MSG_ReadCoord (0);
+	if (bits & QWU_ANGLE1)   to->angles[0]  = MSG_ReadAngle (0);
+	if (bits & QWU_ORIGIN2)  to->origin[1]  = MSG_ReadCoord (0);
+	if (bits & QWU_ANGLE2)   to->angles[1]  = MSG_ReadAngle (0);
+	if (bits & QWU_ORIGIN3)  to->origin[2]  = MSG_ReadCoord (0);
+	if (bits & QWU_ANGLE3)   to->angles[2]  = MSG_ReadAngle (0);
+	// QWU_SOLID carries no data
+}
+
+/*
+==================
+CLQW_ParsePacketEntities -- merge the incoming delta against the previous frame
+into a fresh snapshot. Entities are transmitted in ascending number order, which
+lets a single pass copy-forward unchanged ones, insert new ones from baseline,
+and drop removals.
+==================
+*/
+void CLQW_ParsePacketEntities (qboolean delta)
+{
+	int			newpacket, oldpacket;
+	qw_packet_entities_t	*oldp, *newp, dummy;
+	int			oldindex, newindex;
+	int			word, newnum, oldnum;
+	qboolean		full;
+
+	newpacket = cls.netchan.incoming_sequence & QW_UPDATE_MASK;
+	newp = &qw_snapshots[newpacket];
+
+	if (delta)
+	{
+		oldpacket = MSG_ReadByte () & QW_UPDATE_MASK;
+		oldp = &qw_snapshots[oldpacket];
+		full = false;
+	}
+	else
+	{	// a full update: start delta compressing from here on
+		oldp = &dummy;
+		dummy.num_entities = 0;
+		full = true;
+	}
+
+	oldindex = 0;
+	newindex = 0;
+	newp->num_entities = 0;
+
+	for (;;)
+	{
+		word = (unsigned short) MSG_ReadShort ();
+		if (msg_badread)
+		{
+			Con_Printf ("[QW] bad packetentities\n");
+			CL_Disconnect ();
+			return;
+		}
+
+		if (!word)
+		{	// end of list: copy any remaining old entities forward unchanged
+			while (oldindex < oldp->num_entities)
+			{
+				if (newindex >= QW_MAX_PACKET_ENTITIES)
+					break;
+				newp->entities[newindex++] = oldp->entities[oldindex++];
+			}
+			break;
+		}
+
+		newnum = word & 511;
+		oldnum = (oldindex >= oldp->num_entities) ? 9999 : oldp->entities[oldindex].number;
+
+		while (newnum > oldnum)
+		{	// copy forward entities the delta didn't mention
+			if (full || newindex >= QW_MAX_PACKET_ENTITIES)
+				break;
+			newp->entities[newindex++] = oldp->entities[oldindex++];
+			oldnum = (oldindex >= oldp->num_entities) ? 9999 : oldp->entities[oldindex].number;
+		}
+
+		if (newnum < oldnum)
+		{	// a new entity, delta'd from its baseline
+			if (word & QWU_REMOVE)
+				continue;
+			if (newindex >= QW_MAX_PACKET_ENTITIES)
+				continue;
+			CLQW_ParseDelta (&qw_baselines[newnum], &newp->entities[newindex], word);
+			newindex++;
+			continue;
+		}
+
+		// newnum == oldnum: delta from the previous frame, or a removal
+		if (word & QWU_REMOVE)
+		{
+			oldindex++;
+			continue;
+		}
+		CLQW_ParseDelta (&oldp->entities[oldindex], &newp->entities[newindex], word);
+		newindex++;
+		oldindex++;
+	}
+
+	newp->num_entities = newindex;
+	qw_snap_seq = cls.netchan.incoming_sequence;
+	qw_have_snap = true;
+}
+
+/*
+===============
+CLQW_LinkPacketEntities -- turn the current snapshot into renderable entities and
+add automatic particle trails for rockets, grenades and gibs.
+===============
+*/
+static void CLQW_LinkPacketEntities (void)
+{
+	qw_packet_entities_t	*pack;
+	qw_entity_state_t	*s1;
+	entity_t		*ent;
+	qmodel_t		*model;
+	float			autorotate;
+	vec3_t			old_origin;
+	int			pnum, i;
+
+	pack = &qw_snapshots[qw_snap_seq & QW_UPDATE_MASK];
+	autorotate = anglemod (100 * cl.time);
+
+	for (pnum = 0; pnum < pack->num_entities; pnum++)
+	{
+		s1 = &pack->entities[pnum];
+
+		if (!s1->modelindex || s1->modelindex >= MAX_MODELS)
+			continue;
+		model = cl.model_precache[s1->modelindex];
+		if (!model)
+			continue;
+		if (cl_numvisedicts >= MAX_VISEDICTS)
+			break;
+
+		ent = CL_EntityNum (s1->number);
+		VectorCopy (ent->origin, old_origin);	// last frame's origin, for trails
+
+		ent->model = model;
+		ent->frame = s1->frame;
+		ent->skinnum = s1->skinnum;
+		ent->alpha = 0;		// ENTALPHA_DEFAULT -> opaque
+		ent->colormap = NULL;
+		ent->effects = s1->effects;
+
+		// rotate bonus items in place; everything else takes server angles
+		if (model->flags & EF_ROTATE)
+		{
+			ent->angles[0] = 0;
+			ent->angles[1] = autorotate;
+			ent->angles[2] = 0;
+		}
+		else
+			VectorCopy (s1->angles, ent->angles);
+
+		VectorCopy (s1->origin, ent->origin);
+
+		cl_visedicts[cl_numvisedicts++] = ent;
+
+		// automatic particle trails
+		if (!model->flags)
+			continue;
+		for (i = 0; i < 3; i++)
+			if (fabs(old_origin[i] - ent->origin[i]) > 128)
+			{	// teleported or first sighting: no trail across the gap
+				VectorCopy (ent->origin, old_origin);
+				break;
+			}
+
+		if (model->flags & EF_ROCKET)       R_RocketTrail (old_origin, ent->origin, 0);
+		else if (model->flags & EF_GRENADE) R_RocketTrail (old_origin, ent->origin, 1);
+		else if (model->flags & EF_GIB)     R_RocketTrail (old_origin, ent->origin, 2);
+		else if (model->flags & EF_ZOMGIB)  R_RocketTrail (old_origin, ent->origin, 4);
+		else if (model->flags & EF_TRACER)  R_RocketTrail (old_origin, ent->origin, 3);
+		else if (model->flags & EF_TRACER2) R_RocketTrail (old_origin, ent->origin, 5);
+		else if (model->flags & EF_TRACER3) R_RocketTrail (old_origin, ent->origin, 6);
+	}
+}
+
+/*
+===============
+CLQW_EmitEntities -- rebuild the visible-entity list for this frame.
+===============
+*/
+void CLQW_EmitEntities (void)
+{
+	if (!CLQW_IsConnected ())
+		return;
+
+	cl_numvisedicts = 0;
+
+	if (!qw_have_snap)
+		return;
+
+	CLQW_LinkPacketEntities ();
+	// other players, nail projectiles and temp entities are added in later steps
+}
+
+#endif	/* USE_QW_PROTOCOL */
