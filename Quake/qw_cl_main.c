@@ -44,6 +44,10 @@ cvar_t	qw_rate = {"rate", "10000", CVAR_ARCHIVE};
 // must have a spectator slot free; it echoes the choice in serverdata.
 cvar_t	qw_spectator = {"spectator", "0", CVAR_ARCHIVE};
 
+// DNS resolver used only when the Dreamcast's network came up without one (see
+// QWNET_EnsureDNS). Default is a public resolver; override for a LAN DNS.
+cvar_t	net_dns = {"net_dns", "8.8.8.8", CVAR_ARCHIVE};
+
 qboolean CLQW_Spectator (void)		{ return qw_spectator.value != 0; }
 void CLQW_SetSpectator (qboolean on)	{ Cvar_SetValue ("spectator", on ? 1 : 0); }
 
@@ -389,6 +393,7 @@ void CLQW_Init (void)
 	CLQW_SList_Init ();
 	Cvar_RegisterVariable (&qw_rate);
 	Cvar_RegisterVariable (&qw_spectator);
+	Cvar_RegisterVariable (&net_dns);
 	Cmd_AddCommand ("fullserverinfo", CLQW_FullServerinfo_f);
 	Cmd_AddCommand ("packet", CLQW_Packet_f);
 	Cmd_AddCommand ("changing", CLQW_Changing_f);

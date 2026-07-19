@@ -22,6 +22,39 @@ Received datagrams land in the shared net_message so MSG_Read* parses them.
 #include "qw_net.h"
 #include "net_udp.h"	/* shared UDP_OpenSocket / UDP_Read / UDP_Write / UDP_CloseSocket */
 #include <netdb.h>	/* gethostbyname -- KOS resolves DNS on the Dreamcast */
+#if defined(PLATFORM_DREAMCAST)
+#include <kos/net.h>	/* net_default_dev->dns[] for the DNS-server fallback */
+#endif
+
+/*
+==============
+QWNET_EnsureDNS -- KOS refuses to resolve names when the network came up without
+a DNS server (some DHCP leases / static configs leave net_default_dev->dns zero).
+Point it at the net_dns cvar's resolver in that case so hostnames work.
+==============
+*/
+static void QWNET_EnsureDNS (void)
+{
+#if defined(PLATFORM_DREAMCAST)
+	extern cvar_t	net_dns;	// registered in qw_cl_main.c
+	int		b[4];
+
+	if (!net_default_dev)
+		return;
+	if (net_default_dev->dns[0] || net_default_dev->dns[1] ||
+	    net_default_dev->dns[2] || net_default_dev->dns[3])
+		return;			// already have one (DHCP/static)
+
+	if (sscanf (net_dns.string, "%d.%d.%d.%d", &b[0], &b[1], &b[2], &b[3]) == 4)
+	{
+		net_default_dev->dns[0] = (uint8_t)b[0];
+		net_default_dev->dns[1] = (uint8_t)b[1];
+		net_default_dev->dns[2] = (uint8_t)b[2];
+		net_default_dev->dns[3] = (uint8_t)b[3];
+		Con_DPrintf ("[QW] no DNS server; using %s\n", net_dns.string);
+	}
+#endif
+}
 
 static sys_socket_t	qw_socket = INVALID_SOCKET;
 
@@ -99,6 +132,7 @@ qboolean QWNET_StringToAdr (const char *s, qw_netadr_t *a)
 		return true;
 	}
 
+	QWNET_EnsureDNS ();
 	h = gethostbyname (copy);
 	if (!h || !h->h_addr_list || !h->h_addr_list[0] || h->h_length != 4)
 	{
