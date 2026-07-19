@@ -184,24 +184,44 @@ static void CLQW_ParseModellist (void)
 
 /*
 ==============
-CLQW_ParseStatic -- svc_spawnstatic: a permanent, unmoving entity (torches and
-the like). We read the baseline-shaped payload; rendering statics is a later
-step, so for now this just keeps the byte stream in sync.
+CLQW_ParseStatic -- svc_spawnstatic: a permanent, unmoving entity (torches,
+flames, static lights). Build a renderable entity and insert it into the world's
+efrag lists the same way NetQuake's CL_ParseStatic does.
 ==============
 */
 static void CLQW_ParseStatic (void)
 {
-	int	i;
+	entity_t	*ent;
+	int		i, modelindex, frame, skinnum;
+	vec3_t		origin, angles;
 
-	(void) MSG_ReadByte ();		// modelindex
-	(void) MSG_ReadByte ();		// frame
-	(void) MSG_ReadByte ();		// colormap
-	(void) MSG_ReadByte ();		// skinnum
+	modelindex = MSG_ReadByte ();
+	frame = MSG_ReadByte ();
+	(void) MSG_ReadByte ();		// colormap (unused for statics)
+	skinnum = MSG_ReadByte ();
 	for (i = 0; i < 3; i++)
 	{
-		(void) MSG_ReadCoord (0);	// origin
-		(void) MSG_ReadAngle (0);	// angles
+		origin[i] = MSG_ReadCoord (0);
+		angles[i] = MSG_ReadAngle (0);
 	}
+
+	if (cl.num_statics >= MAX_STATIC_ENTITIES)
+		return;			// drop extras rather than error out
+	if (modelindex <= 0 || modelindex >= MAX_MODELS || !cl.model_precache[modelindex])
+		return;			// nothing to draw, but bytes are consumed
+
+	ent = &cl_static_entities[cl.num_statics++];
+	memset (ent, 0, sizeof(*ent));
+	ent->model = cl.model_precache[modelindex];
+	ent->lerpflags |= LERP_RESETANIM;
+	ent->frame = frame;
+	ent->colormap = vid.colormap;
+	ent->skinnum = skinnum;
+	ent->alpha = 0;			// ENTALPHA_DEFAULT
+	ent->scale = ENTSCALE_DEFAULT;
+	VectorCopy (origin, ent->origin);
+	VectorCopy (angles, ent->angles);
+	R_AddEfrags (ent);
 }
 
 // ---------------------------------------------------------------------------
@@ -306,6 +326,11 @@ static void CLQW_ParsePlayerinfo (void)
 
 		cl.viewentity = num + 1;
 		cl.viewheight = DEFAULT_VIEWHEIGHT;
+
+		// QW carries the view weapon's animation frame in playerinfo, not as a
+		// stat; feed it to STAT_WEAPONFRAME where V_CalcRefdef reads it so the
+		// gun animates when firing.
+		cl.stats[STAT_WEAPONFRAME] = weaponframe;
 	}
 }
 
@@ -645,7 +670,18 @@ void CLQW_ParseServerMessage (void)
 			break;
 
 		case qwsvc_muzzleflash:
-			(void) MSG_ReadShort ();	// entity
+			{
+				int e = (unsigned short) MSG_ReadShort ();	// player entity
+				if (e >= 1 && e <= QW_MAX_CLIENTS)
+				{
+					qw_player_render_t *pl = &qw_players[e - 1];
+					vec3_t	fv, rv, uv, org;
+
+					AngleVectors (pl->viewangles, fv, rv, uv);
+					VectorMA (pl->origin, 18, fv, org);
+					CLQW_Dlight (e, org, 200 + (rand() & 31), 0.1);
+				}
+			}
 			break;
 
 		case qwsvc_nails:

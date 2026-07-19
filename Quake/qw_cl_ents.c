@@ -62,6 +62,23 @@ void CLQW_ClearProjectiles (void)
 
 /*
 ==============
+CLQW_Dlight -- (re)allocate a keyed dynamic light. Re-created every frame for a
+persistent glow (same key reuses the slot); QuakeSpasm dlights are uncolored, so
+these are white.
+==============
+*/
+void CLQW_Dlight (int key, const vec3_t org, float radius, float time)
+{
+	dlight_t	*dl = CL_AllocDlight (key);
+
+	VectorCopy (org, dl->origin);
+	dl->radius = radius;
+	dl->die = cl.time + time;
+	dl->minlight = 32;
+}
+
+/*
+==============
 CLQW_ClearEntities -- wipe the snapshot/baseline/player state at level change.
 ==============
 */
@@ -410,6 +427,17 @@ static void CLQW_LinkPacketEntities (void)
 
 		cl_visedicts[cl_numvisedicts++] = ent;
 
+		// glowing items / powerups cast a dynamic light
+		if (s1->effects & EF_BRIGHTLIGHT)
+		{
+			vec3_t p;
+			VectorCopy (ent->origin, p);
+			p[2] += 16;
+			CLQW_Dlight (s1->number, p, 400 + (rand() & 31), 0.1);
+		}
+		else if (s1->effects & EF_DIMLIGHT)
+			CLQW_Dlight (s1->number, ent->origin, 200 + (rand() & 31), 0.1);
+
 		// automatic particle trails
 		if (!model->flags)
 			continue;
@@ -420,7 +448,11 @@ static void CLQW_LinkPacketEntities (void)
 				break;
 			}
 
-		if (model->flags & EF_ROCKET)       R_RocketTrail (old_origin, ent->origin, 0);
+		if (model->flags & EF_ROCKET)
+		{
+			R_RocketTrail (old_origin, ent->origin, 0);
+			CLQW_Dlight (s1->number, ent->origin, 200, 0.01);	// rocket lights the walls
+		}
 		else if (model->flags & EF_GRENADE) R_RocketTrail (old_origin, ent->origin, 1);
 		else if (model->flags & EF_GIB)     R_RocketTrail (old_origin, ent->origin, 2);
 		else if (model->flags & EF_ZOMGIB)  R_RocketTrail (old_origin, ent->origin, 4);
@@ -468,6 +500,19 @@ static void CLQW_LinkPlayers (void)
 		model = cl.model_precache[pl->modelindex];
 		if (!model)
 			continue;
+
+		// quad/pentagram players glow (light flashes come even from a player we
+		// can't currently see, so do this before the visible/vis-edict checks)
+		if (pl->effects & EF_BRIGHTLIGHT)
+		{
+			vec3_t p;
+			VectorCopy (pl->origin, p);
+			p[2] += 16;
+			CLQW_Dlight (j + 1, p, 400 + (rand() & 31), 0.1);
+		}
+		else if (pl->effects & EF_DIMLIGHT)
+			CLQW_Dlight (j + 1, pl->origin, 200 + (rand() & 31), 0.1);
+
 		if (cl_numvisedicts >= MAX_VISEDICTS)
 			break;
 

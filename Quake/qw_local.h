@@ -351,6 +351,7 @@ int	CLQW_DeltaSequence (void);		// snapshot to request deltas from, -1 = none
 void	CLQW_ParseProjectiles (void);		// svc_nails
 void	CLQW_ClearProjectiles (void);
 void	CLQW_EmitEntities (void);		// build cl_visedicts for this frame
+void	CLQW_Dlight (int key, const vec3_t org, float radius, float time);
 
 // player physics (qw_pmove.c)
 extern qw_playermove_t	qw_pmove;
@@ -375,6 +376,7 @@ void	CLQW_CalcPredictionError (const vec3_t predicted, const vec3_t server);
 // --- module entry points (filled in across the port phases) ------------------
 void	CLQW_Init (void);				// one-time QW client init (from CL_Init)
 void	CLQW_EstablishConnection (const char *host);	// connectionless handshake start
+void	CLQW_Disconnect (void);				// tear down the QW connection
 void	CLQW_RunConnection (void);			// per-frame pump (from Host_Frame)
 void	CLQW_ParseServerMessage (void);			// parse a netchan message (qw_cl_parse.c)
 qboolean CLQW_IsConnected (void);			// netchan established?

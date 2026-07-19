@@ -111,6 +111,20 @@ void CL_Disconnect (void)
 	BGM_Stop();
 	CDAudio_Stop();
 
+#if defined(USE_QW_PROTOCOL)
+	if (cls.protofamily == PROTO_QW)
+	{	// QuakeWorld runs its own netchan/socket, not cls.netcon
+		CLQW_Disconnect ();
+		cls.state = ca_disconnected;
+		cls.protofamily = PROTO_NQ;	// back to the NetQuake default
+		cls.demoplayback = cls.timedemo = false;
+		cls.demopaused = false;
+		cl.intermission = 0;
+		CL_ClearSignons ();
+		return;
+	}
+#endif
+
 // if running a local server, shut it down
 	if (cls.demoplayback)
 		CL_StopPlayback ();
@@ -160,14 +174,25 @@ void CL_EstablishConnection (const char *host)
 	if (cls.demoplayback)
 		return;
 
-	CL_Disconnect ();
-
 #if defined(USE_QW_PROTOCOL)
+	// CL_Disconnect resets protofamily to the NetQuake default, so remember the
+	// family Host_Connect_f asked for and restore it afterwards. Local servers
+	// are always NetQuake regardless of any lingering state.
+	{
+		protofamily_t	want = cls.protofamily;
+		if (!q_strcasecmp (host, "local"))
+			want = PROTO_NQ;
+		CL_Disconnect ();
+		cls.protofamily = want;
+	}
+
 	if (cls.protofamily == PROTO_QW)
 	{	// QuakeWorld connects connectionlessly on its own netchan
 		CLQW_EstablishConnection (host);
 		return;
 	}
+#else
+	CL_Disconnect ();
 #endif
 
 	cls.netcon = NET_Connect (host);

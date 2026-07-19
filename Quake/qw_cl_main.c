@@ -230,6 +230,21 @@ void CLQW_RunConnection (void)
 
 /*
 =====================
+CLQW_Disconnect -- tear down the QW connection so the per-frame pump stops. Called
+from CL_Disconnect whenever the active family is QuakeWorld (real disconnect, a
+missing map, or reconnecting elsewhere).
+=====================
+*/
+void CLQW_Disconnect (void)
+{
+	// Stop the per-frame pump. We don't send an explicit "drop" -- the server
+	// times the connection out on its own, and forcing a transmit here would
+	// have to touch a netchan that may already be in a half-torn-down state.
+	qw_connstate = QWCS_IDLE;
+}
+
+/*
+=====================
 CLQW_EstablishConnection -- QuakeWorld counterpart of CL_EstablishConnection
 =====================
 */
