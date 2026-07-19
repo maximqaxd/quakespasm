@@ -26,6 +26,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "quakedef.h"
 #include "net_defs.h"
 
+#if defined(PLATFORM_DREAMCAST)
+#include <kos/net.h>	/* net_default_dev -- the DHCP-assigned local IP */
+#endif
+
 static sys_socket_t net_acceptsocket = INVALID_SOCKET;	// socket for fielding new connections
 static sys_socket_t net_controlsocket;
 static sys_socket_t net_broadcastsocket = 0;
@@ -39,17 +43,41 @@ static in_addr_t	myAddr;
 
 sys_socket_t UDP_Init (void)
 {
-	int	err, i;
+	int	i;
 	char	*tst;
+	struct qsockaddr	addr;
+#if !defined(PLATFORM_DREAMCAST)
+	int	err;
 	char	buff[MAXHOSTNAMELEN];
 	struct hostent		*local;
-	struct qsockaddr	addr;
+#endif
 
 	if (COM_CheckParm ("-noudp"))
 		return INVALID_SOCKET;
 
 	// determine my name & address
 	myAddr = htonl(INADDR_LOOPBACK);
+#if defined(PLATFORM_DREAMCAST)
+	// KOS brings the default network device (BBA / LAN adapter) up via INIT_NET
+	// and DHCP; read the assigned IPv4 straight off it, since KOS has no
+	// gethostname/gethostbyname for the local host. -ip <addr> still overrides.
+	i = COM_CheckParm ("-ip");
+	if (i && i < com_argc - 1)
+	{
+		myAddr = inet_addr (com_argv[i + 1]);
+		if (myAddr == INADDR_NONE)
+			Sys_Error ("%s is not a valid IP address", com_argv[i + 1]);
+		strcpy (my_tcpip_address, com_argv[i + 1]);
+	}
+	else if (net_default_dev && (net_default_dev->flags & NETIF_RUNNING))
+	{
+		memcpy (&myAddr, net_default_dev->ip_addr, 4);	// already network byte order
+	}
+	else
+	{
+		Con_SafePrintf ("UDP_Init: no network device is up (BBA/LAN adapter missing?)\n");
+	}
+#else
 	if (gethostname(buff, MAXHOSTNAMELEN) != 0)
 	{
 		err = SOCKETERRNO;
@@ -102,6 +130,7 @@ sys_socket_t UDP_Init (void)
 			}
 		}
 	}
+#endif	/* !PLATFORM_DREAMCAST */
 
 	if ((net_controlsocket = UDP_OpenSocket(0)) == INVALID_SOCKET)
 	{
@@ -304,6 +333,13 @@ int UDP_Read (sys_socket_t socketid, byte *buf, int len, struct qsockaddr *addr)
 
 static int UDP_MakeSocketBroadcastCapable (sys_socket_t socketid)
 {
+#if defined(PLATFORM_DREAMCAST)
+	// KOS's socket layer doesn't implement the SO_BROADCAST option (setsockopt
+	// returns "Protocol not available"), but broadcast sends work without it --
+	// so just claim the socket instead of failing LAN discovery.
+	net_broadcastsocket = socketid;
+	return 0;
+#else
 	int	i = 1;
 
 	// make this socket broadcast capable
@@ -317,6 +353,7 @@ static int UDP_MakeSocketBroadcastCapable (sys_socket_t socketid)
 	net_broadcastsocket = socketid;
 
 	return 0;
+#endif
 }
 
 //=============================================================================
