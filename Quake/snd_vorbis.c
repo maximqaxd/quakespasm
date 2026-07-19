@@ -32,7 +32,11 @@
 #if defined(VORBIS_USE_TREMOR)
 /* for Tremor / Vorbisfile api differences,
  * see doc/diff.html in the Tremor package. */
+#if defined(PLATFORM_DREAMCAST)
+#include <vorbis/ivorbisfile.h>	/* kos-ports installs the Tremor headers here */
+#else
 #include <tremor/ivorbisfile.h>
+#endif
 #else
 #include <vorbis/vorbisfile.h>
 #endif

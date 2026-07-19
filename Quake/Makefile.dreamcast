@@ -15,7 +15,7 @@ endif
 # Music codecs. Start minimal (WAVE only) for a clean first link; enable more
 # once the base build boots.
 USE_CODEC_WAVE  ?= 1
-USE_CODEC_VORBIS?= 0
+USE_CODEC_VORBIS?= 1
 USE_CODEC_MP3   ?= 0
 USE_CODEC_OPUS  ?= 0
 
@@ -69,8 +69,11 @@ ifeq ($(USE_CODEC_WAVE),1)
 CFLAGS += -DUSE_CODEC_WAVE
 endif
 ifeq ($(USE_CODEC_VORBIS),1)
-CFLAGS += -DUSE_CODEC_VORBIS -DVORBIS_USE_TREMOR
-LIBS   += -ltremor -logg
+# Integer Vorbis (Tremor) + libogg from kos-ports. The Tremor headers pull in a
+# bare "ogg.h", so its directory needs to be on the include path; the libs live
+# in kos-ports/lib, not the SDL2 addons libdir.
+CFLAGS += -DUSE_CODEC_VORBIS -DVORBIS_USE_TREMOR -I$(KOS_PORTS)/include/ogg
+LIBS   += -L$(KOS_PORTS)/lib -ltremor -logg
 endif
 ifeq ($(USE_CODEC_MP3),1)
 CFLAGS += -DUSE_CODEC_MP3
