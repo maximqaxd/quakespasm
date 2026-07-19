@@ -44,15 +44,17 @@ static const int	osk_special_x[SP_COUNT] = { 96, 140, 190, 232 };
 static int	osk_row, osk_col;
 static qboolean	osk_shift;
 static qboolean	osk_sending;		// pass through the Enter we synthesize
+static qboolean	osk_open;		// opened with A, closed with B/enter
 
 /*
 ==============
-OSK_Active -- shown only for a focused text field, and only without a keyboard.
+OSK_Active -- drawn/steering input only while explicitly opened over a focused
+text field (and only without a hardware keyboard).
 ==============
 */
 qboolean OSK_Active (void)
 {
-	return osk_enable.value && Key_TextEntry () && !IN_HasKeyboard ();
+	return osk_open && osk_enable.value && Key_TextEntry () && !IN_HasKeyboard ();
 }
 
 static int OSK_MaxCol (void)
@@ -82,6 +84,7 @@ static void OSK_Select (void)
 		break;
 	case SP_ENTER:
 		osk_sending = true;			// the console/menu must see this one
+		osk_open = false;			// and close the keyboard
 		Key_Event (K_ENTER, true);
 		Key_Event (K_ENTER, false);
 		break;
@@ -95,13 +98,35 @@ OSK_KeyEvent -- consume navigation/select while active; returns true if handled.
 */
 qboolean OSK_KeyEvent (int key, qboolean down)
 {
-	if (!OSK_Active ())
+	if (!osk_enable.value || IN_HasKeyboard () || !Key_TextEntry ())
+	{
+		osk_open = false;
 		return false;
+	}
+
+	if (!osk_open)
+	{	// closed: A opens the keyboard, everything else navigates the menu
+		if (down && key == K_ABUTTON)
+		{
+			osk_open = true;
+			osk_row = osk_col = 0;
+			osk_shift = false;
+			return true;
+		}
+		return false;
+	}
 
 	if (osk_sending)			// let our synthesized Enter through
 	{
 		osk_sending = false;
 		return false;
+	}
+
+	if (key == K_BBUTTON || key == K_ESCAPE)
+	{	// close, back to menu navigation
+		if (down)
+			osk_open = false;
+		return true;
 	}
 
 	if (!down)
@@ -135,7 +160,7 @@ qboolean OSK_KeyEvent (int key, qboolean down)
 		OSK_Select ();
 		break;
 	default:
-		return false;			// ESC, physical letters, etc. pass through
+		return false;			// physical letters etc. pass through
 	}
 
 	if (osk_col >= OSK_MaxCol ())
@@ -143,11 +168,13 @@ qboolean OSK_KeyEvent (int key, qboolean down)
 	return true;
 }
 
-static void OSK_DrawStr (int x, int y, const char *s)
+// Draw a string in gold (default) or bright white -- the two colours the Quake
+// console font provides via the high bit (128..255 are the gold glyphs).
+static void OSK_DrawStr (int x, int y, const char *s, qboolean white)
 {
 	while (*s)
 	{
-		Draw_Character (x, y, *s);
+		Draw_Character (x, y, white ? *s : (*s | 128));
 		x += 8;
 		s++;
 	}
@@ -155,12 +182,14 @@ static void OSK_DrawStr (int x, int y, const char *s)
 
 /*
 ==============
-OSK_Draw -- render the keyboard near the bottom of the 320x200 menu canvas.
+OSK_Draw -- render the keyboard near the bottom of the 320x200 menu canvas. The
+highlighted key is drawn bright white, the rest gold; a Draw_Fill selection box
+was invisible under the PVR renderer, so the font's two colours carry it.
 ==============
 */
 void OSK_Draw (void)
 {
-	const int	cw = 13, x0 = 95, y0 = 150;
+	const int	cw = 13, x0 = 95, y0 = 156;
 	int		r, c, x, y;
 
 	if (!OSK_Active ())
@@ -168,7 +197,25 @@ void OSK_Draw (void)
 
 	GL_SetCanvas (CANVAS_MENU);
 
-	Draw_Fill (x0 - 8, y0 - 8, OSK_COLS * cw + 16, 5 * 10 + 14, 0, 0.7);
+	// Opaque backing (alpha 1): the PVR 2D path blends Draw_Fill, so the old
+	// 0.75 wash let the menu/console text drawn underneath bleed through. A
+	// solid panel hides it -- menu fields sit above the panel and stay visible.
+	Draw_Fill (x0 - 8, y0 - 16, OSK_COLS * cw + 16, 5 * 10 + 22, 0, 1);
+
+	// Top line. Over the console the real input line is at the bottom of the
+	// screen, hidden behind this panel, so echo it here; scroll to keep the
+	// caret in view. In menus the field is visible above, so just hint the keys.
+	if (key_dest == key_console)
+	{
+		int		maxch = (OSK_COLS * cw) / 8;
+		int		ofs = (key_linepos >= maxch) ? 1 + key_linepos - maxch : 0;
+		const char	*s = key_lines[edit_line] + ofs;
+
+		for (x = x0 - 4, c = 0; *s && c < maxch; s++, c++, x += 8)
+			Draw_Character (x, y0 - 12, *s);
+	}
+	else
+		OSK_DrawStr (x0 - 4, y0 - 12, "A type  B close", false);
 
 	for (r = 0; r < OSK_ROWS; r++)
 	{
@@ -176,11 +223,10 @@ void OSK_Draw (void)
 
 		for (c = 0; c < OSK_COLS; c++)
 		{
+			qboolean sel = (r == osk_row && c == osk_col);
 			x = x0 + c * cw;
 			y = y0 + r * 10;
-			if (r == osk_row && c == osk_col)
-				Draw_Fill (x - 2, y - 1, 11, 10, 15, 0.5);
-			Draw_Character (x, y, row[c]);
+			Draw_Character (x, y, sel ? row[c] : (row[c] | 128));
 		}
 	}
 
@@ -189,9 +235,7 @@ void OSK_Draw (void)
 	for (c = 0; c < SP_COUNT; c++)
 	{
 		x = osk_special_x[c];
-		if (osk_row == OSK_ROWS && osk_col == c)
-			Draw_Fill (x - 2, y - 1, (int)strlen (osk_special[c]) * 8 + 3, 10, 15, 0.5);
-		OSK_DrawStr (x, y, osk_special[c]);
+		OSK_DrawStr (x, y, osk_special[c], osk_row == OSK_ROWS && osk_col == c);
 	}
 }
 

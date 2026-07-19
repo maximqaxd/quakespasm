@@ -1066,20 +1066,23 @@ void M_QWList_Draw (void)
 		qw_server_t	*s = &qw_serverlist[qwlist_scroll + i];
 		char		buf[24];
 		int		ty = y + i * 8;
+		// the selected row is drawn bright white, the others gold (M_Print)
+		void (*pr)(int, int, const char *) =
+			(qwlist_scroll + i == qwlist_cursor - QWLIST_HEADER) ? M_PrintWhite : M_Print;
 
 		q_strlcpy (buf, s->name, 18);		// name/IP, fit before Map
-		M_Print (16, ty, buf);
+		pr (16, ty, buf);
 		q_strlcpy (buf, s->map, 8);		// map, fit before Ping
-		M_Print (160, ty, buf);
+		pr (160, ty, buf);
 		if (s->ping < 0)
-			M_Print (224, ty, "...");
+			pr (224, ty, "...");
 		else
 		{
 			q_snprintf (buf, sizeof(buf), "%i", s->ping);
-			M_Print (224, ty, buf);
+			pr (224, ty, buf);
 		}
 		q_snprintf (buf, sizeof(buf), "%i/%i", s->curplayers, s->maxplayers);
-		M_Print (256, ty, buf);
+		pr (256, ty, buf);
 	}
 
 	// blinking cursor
