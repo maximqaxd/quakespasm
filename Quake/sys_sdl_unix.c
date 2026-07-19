@@ -485,12 +485,25 @@ void Sys_Error (const char *error, ...)
 void Sys_Printf (const char *fmt, ...)
 {
 	va_list argptr;
+#if defined(PLATFORM_DREAMCAST)
+	char		text[1024];
+	unsigned char	*p;
 
+	va_start (argptr, fmt);
+	q_vsnprintf (text, sizeof(text), fmt, argptr);
+	va_end (argptr);
+
+	// Quake's console font stores its glyphs (colored/brown text) in the high
+	// bit; strip it so the real terminal shows plain ASCII instead of codepage
+	// garbage. The in-game console decodes the high bit itself.
+	for (p = (unsigned char *)text; *p; p++)
+		*p &= 0x7f;
+	fputs (text, stdout);
+	fflush (stdout);
+#else
 	va_start(argptr, fmt);
 	vprintf(fmt, argptr);
 	va_end(argptr);
-#if defined(PLATFORM_DREAMCAST)
-	fflush (stdout);
 #endif
 }
 

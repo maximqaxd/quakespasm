@@ -210,6 +210,15 @@ void CLQW_RunConnection (void)
 	cl.oldtime = cl.time;
 	cl.time = realtime;
 
+	// weapon kick (svc_smallkick/bigkick) eases back to level; NetQuake refreshes
+	// punchangle from clientdata every frame, but QW only sends kick events.
+	if (cl.punchangle[0] < 0)
+	{
+		cl.punchangle[0] += (cl.time - cl.oldtime) * 20.0;
+		if (cl.punchangle[0] > 0)
+			cl.punchangle[0] = 0;
+	}
+
 	CLQW_CheckForResend ();
 	CLQW_ReadPackets ();
 

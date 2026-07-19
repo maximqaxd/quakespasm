@@ -15,6 +15,7 @@ cleanly rather than desync the stream.
 
 #include "qw_local.h"
 #include "qw_net.h"
+#include "bgmusic.h"	// BGM_PlayCDtrack for svc_cdtrack
 
 qw_movevars_t	qw_movevars;
 qwcl_state_t	qwcl;
@@ -626,11 +627,18 @@ void CLQW_ParseServerMessage (void)
 			break;
 
 		case qwsvc_spawnstaticsound:
-			for (i = 0; i < 3; i++)
-				(void) MSG_ReadCoord (0);	// origin
-			(void) MSG_ReadByte ();		// sound number
-			(void) MSG_ReadByte ();		// volume
-			(void) MSG_ReadByte ();		// attenuation
+			{
+				vec3_t	org;
+				int	sound_num, vol, atten;
+
+				for (i = 0; i < 3; i++)
+					org[i] = MSG_ReadCoord (0);
+				sound_num = MSG_ReadByte ();
+				vol = MSG_ReadByte ();
+				atten = MSG_ReadByte ();
+				if (sound_num < MAX_SOUNDS && cl.sound_precache[sound_num])
+					S_StaticSound (cl.sound_precache[sound_num], org, vol, atten);
+			}
 			break;
 
 		// --- per-frame game state (phase 3a: consume + drive the view) ---
@@ -663,10 +671,7 @@ void CLQW_ParseServerMessage (void)
 			break;
 
 		case qwsvc_damage:
-			(void) MSG_ReadByte ();		// armor
-			(void) MSG_ReadByte ();		// blood
-			for (i = 0; i < 3; i++)
-				(void) MSG_ReadCoord (0);
+			V_ParseDamage ();		// red flash + view kick toward the hit
 			break;
 
 		case qwsvc_muzzleflash:
@@ -693,7 +698,12 @@ void CLQW_ParseServerMessage (void)
 			break;
 
 		case qwsvc_smallkick:
+			cl.punchangle[0] = -2;		// weapon recoil dip (decays in the pump)
+			break;
 		case qwsvc_bigkick:
+			cl.punchangle[0] = -4;
+			break;
+
 		case qwsvc_killedmonster:
 		case qwsvc_foundsecret:
 		case qwsvc_sellscreen:
@@ -728,6 +738,7 @@ void CLQW_ParseServerMessage (void)
 
 		case qwsvc_cdtrack:
 			cl.cdtrack = MSG_ReadByte ();
+			BGM_PlayCDtrack ((byte) cl.cdtrack, true);	// falls back to ogg music
 			break;
 
 		case qwsvc_updatestat:
