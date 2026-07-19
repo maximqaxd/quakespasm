@@ -231,7 +231,16 @@ void CLQW_RunConnection (void)
 	// on (cl.time - cl.oldtime), and without it every burst aged a whole session
 	// in one frame and vanished instantly.
 	cl.oldtime = cl.time;
-	cl.time = realtime;
+	// Render the world slightly in the past -- at the time the newest snapshot is
+	// actually valid (realtime - latency), like the reference CL_PredictMove. This
+	// is what lets the local player and entities interpolate smoothly instead of
+	// extrapolating to "now" every frame (which reads as sloppy jitter). qw_latency
+	// is already smoothed, so cl.time stays monotonic in practice.
+	cl.time = realtime - qw_latency;
+	if (cl.time > realtime)
+		cl.time = realtime;
+	if (cl.time < cl.oldtime)		// never step the effect clock backwards
+		cl.time = cl.oldtime;
 
 	// weapon kick (svc_smallkick/bigkick) eases back to level; NetQuake refreshes
 	// punchangle from clientdata every frame, but QW only sends kick events.

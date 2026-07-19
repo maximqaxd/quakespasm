@@ -87,7 +87,7 @@ cvar_t	coop = {"coop","0",CVAR_NONE};			// 0 or 1
 cvar_t	pausable = {"pausable","1",CVAR_NONE};
 
 #if defined(PLATFORM_DREAMCAST)
-cvar_t	developer = {"developer","1",CVAR_NONE};	/* DC: 1 during development; set to 0 for release */
+cvar_t	developer = {"developer","0",CVAR_NONE};	/* DC: 1 during development; set to 0 for release */
 #else
 cvar_t	developer = {"developer","0",CVAR_NONE};
 #endif

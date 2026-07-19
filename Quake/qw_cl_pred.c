@@ -158,7 +158,9 @@ command to produce qw_simorg, and move the view entity there.
 void CLQW_PredictMove (void)
 {
 	int			i;
-	qw_playerstate_t	*from, *to;
+	float			f;
+	qw_playerstate_t	*from, *to = NULL;
+	double			fromtime, totime = 0;
 	entity_t		*ent;
 
 	if (!CLQW_IsConnected ())
@@ -167,36 +169,78 @@ void CLQW_PredictMove (void)
 		return;		// no authoritative snapshot yet
 	if (cl.paused)
 		return;
+	// net hasn't delivered in a long time -- nothing safe to predict from
+	if (cls.netchan.outgoing_sequence - qw_validsequence >= QW_UPDATE_BACKUP - 1)
+		return;
 
 	VectorCopy (cl.viewangles, qw_simangles);
 
-	// the last frame the server confirmed
+	// the last frame the server confirmed, and when we sent the command it acks
 	from = &qw_frames[qw_validsequence & QW_UPDATE_MASK].playerstate;
-	to = from;
+	fromtime = qw_frames[qw_validsequence & QW_UPDATE_MASK].senttime;
 
-	if (!cl_nopred.value && cl.worldmodel)
+	if (cl_nopred.value || !cl.worldmodel)
+	{
+		VectorCopy (from->origin, qw_simorg);
+		VectorCopy (from->velocity, qw_simvel);
+		cl.onground = (from->onground != -1);
+	}
+	else
 	{
 		QWPM_SetupWorld ();
 		CLQW_SetSolidPlayers ();
 
-		// simulate forward through the commands the server has not answered
-		for (i = qw_validsequence + 1;
-			 i < cls.netchan.outgoing_sequence && i <= qw_validsequence + (QW_UPDATE_BACKUP - 1);
-			 i++)
+		// Replay the unacked commands, stopping once we've simulated past cl.time
+		// (= realtime - latency). Rendering to that point and interpolating the
+		// last step is what makes movement smooth rather than extrapolated-jittery.
+		for (i = 1; i < QW_UPDATE_BACKUP - 1 &&
+			 qw_validsequence + i < cls.netchan.outgoing_sequence; i++)
 		{
-			qw_frame_t *f = &qw_frames[i & QW_UPDATE_MASK];
-			CLQW_PredictUsercmd (from, &f->playerstate, &f->cmd, qwcl.spectator);
-			to = &f->playerstate;
+			qw_frame_t *tf = &qw_frames[(qw_validsequence + i) & QW_UPDATE_MASK];
+			CLQW_PredictUsercmd (from, &tf->playerstate, &tf->cmd, qwcl.spectator);
+			to = &tf->playerstate;
+			totime = tf->senttime;
+			if (totime >= cl.time)
+				break;
 			from = to;
+			fromtime = totime;
+		}
+
+		if (!to)
+		{	// nothing unacked to replay: sit on the confirmed frame
+			VectorCopy (from->origin, qw_simorg);
+			VectorCopy (from->velocity, qw_simvel);
+			cl.onground = (from->onground != -1);
+		}
+		else
+		{
+			if (totime == fromtime)
+				f = 0;
+			else
+			{
+				f = (float)((cl.time - fromtime) / (totime - fromtime));
+				if (f < 0) f = 0;
+				if (f > 1) f = 1;
+			}
+
+			// snap across a teleport instead of lerping through the world
+			for (i = 0; i < 3; i++)
+				if (fabs (from->origin[i] - to->origin[i]) > 128)
+				{
+					f = 1;
+					break;
+				}
+
+			for (i = 0; i < 3; i++)
+			{
+				qw_simorg[i] = from->origin[i] + f * (to->origin[i] - from->origin[i]);
+				qw_simvel[i] = from->velocity[i] + f * (to->velocity[i] - from->velocity[i]);
+			}
+
+			// feed on-ground state to the view code so stair smoothing runs
+			cl.onground = (to->onground != -1);
 		}
 	}
-
-	VectorCopy (to->origin, qw_simorg);
-	VectorCopy (to->velocity, qw_simvel);
-
-	// feed the on-ground state to the view code: without it the stair-step
-	// camera smoothing never runs and every step reads as a vertical snap
-	cl.onground = (to->onground != -1);
 
 	// glide out any leftover prediction error instead of snapping to it
 	{
