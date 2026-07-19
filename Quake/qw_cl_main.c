@@ -32,6 +32,10 @@ typedef enum
 
 static qwconnstate_t	qw_connstate = QWCS_IDLE;
 
+// Bytes/sec we ask the server to send us. Broadband default; set "rate 2500"
+// (or lower) on a modem. Archived so it persists.
+cvar_t	qw_rate = {"rate", "10000", CVAR_ARCHIVE};
+
 // True once the netchan is up, so command forwarding can write to it.
 qboolean CLQW_IsConnected (void)
 {
@@ -50,7 +54,12 @@ static void CLQW_BuildUserinfo (char *out, size_t outsize)
 	extern cvar_t	cl_name;
 	const char	*name = (cl_name.string && cl_name.string[0]) ? cl_name.string : "dreamcast";
 
-	q_snprintf (out, outsize, "\\name\\%s\\rate\\2500\\msg\\1\\topcolor\\0\\bottomcolor\\0", name);
+	int	rate = (int) qw_rate.value;
+
+	if (rate < 500)		rate = 500;	// clamp to sane bounds
+	if (rate > 100000)	rate = 100000;
+
+	q_snprintf (out, outsize, "\\name\\%s\\rate\\%i\\msg\\1\\topcolor\\0\\bottomcolor\\0", name, rate);
 }
 
 /*
@@ -299,6 +308,7 @@ void CLQW_Init (void)
 {
 	QWNET_Init ();
 	QWNetchan_Init ();
+	Cvar_RegisterVariable (&qw_rate);
 	Cmd_AddCommand ("fullserverinfo", CLQW_FullServerinfo_f);
 	Cmd_AddCommand ("packet", CLQW_Packet_f);
 	Cmd_AddCommand ("changing", CLQW_Changing_f);
