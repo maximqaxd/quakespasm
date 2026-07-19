@@ -177,13 +177,28 @@ typedef struct
 
 extern qwcl_state_t	qwcl;
 
+// A QuakeWorld user command (movement input sent to the server each frame).
+typedef struct
+{
+	byte	msec;			// duration of this command
+	vec3_t	angles;			// view angles
+	short	forwardmove, sidemove, upmove;
+	byte	buttons;		// bit 0 attack, bit 1 jump
+	byte	impulse;
+} qw_usercmd_t;
+
+#define	QW_UPDATE_BACKUP	64	// ring of recent commands (indexed by netchan seq)
+#define	QW_UPDATE_MASK		(QW_UPDATE_BACKUP - 1)
+
 // --- module entry points (filled in across the port phases) ------------------
 void	CLQW_Init (void);				// one-time QW client init (from CL_Init)
 void	CLQW_EstablishConnection (const char *host);	// connectionless handshake start
 void	CLQW_RunConnection (void);			// per-frame pump (from Host_Frame)
 void	CLQW_ParseServerMessage (void);			// parse a netchan message (qw_cl_parse.c)
 qboolean CLQW_IsConnected (void);			// netchan established?
+void	CLQW_SendMove (void);				// build + send clc_move (qw_cl_input.c)
 unsigned Com_BlockChecksum (const void *buffer, int length);	// MD4 fold (qw_md4.c)
+byte	COM_BlockSequenceCRCByte (byte *base, int length, int sequence);	// move CRC (qw_crc.c)
 
 #endif	/* USE_QW_PROTOCOL */
 

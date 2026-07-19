@@ -179,9 +179,11 @@ void CLQW_RunConnection (void)
 	CLQW_CheckForResend ();
 	CLQW_ReadPackets ();
 
-	// keep the channel alive once connected (an empty packet carries acks)
+	// once on the server, send our input each frame (this also carries the acks
+	// and keeps us from timing out); before that a bare packet keeps the channel
+	// alive during the handshake.
 	if (qw_connstate == QWCS_CONNECTED && QWNetchan_CanPacket (&cls.netchan))
-		QWNetchan_Transmit (&cls.netchan, 0, NULL);
+		CLQW_SendMove ();
 }
 
 /*
