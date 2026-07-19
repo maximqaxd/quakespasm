@@ -161,6 +161,7 @@ static void CLQW_ReadPackets (void)
 		if (!QWNetchan_Process (&cls.netchan))
 			continue;		// wasn't accepted (bad seq / wrong address)
 
+		cl.last_received_message = realtime;	// keeps the net icon (SCR_DrawNet) off
 		CLQW_ParseServerMessage ();
 	}
 }
@@ -239,7 +240,7 @@ static void CLQW_Packet_f (void)
 	}
 	if (!QWNET_StringToAdr (Cmd_Argv (1), &adr))
 	{
-		Con_Printf ("Bad address\n");
+		Con_DPrintf ("[QW] packet: bad address \"%s\"\n", Cmd_Argv (1));
 		return;
 	}
 
@@ -276,6 +277,19 @@ static void CLQW_Changing_f (void)
 
 /*
 =====================
+CLQW_Skins_f -- "skins" : QuakeWorld loads player skins here and then sends
+"begin" to enter the game. We don't download skins, so go straight to begin --
+without this the signon stalls after spawn and no player frames ever arrive.
+=====================
+*/
+static void CLQW_Skins_f (void)
+{
+	MSG_WriteByte (&cls.netchan.message, qwclc_stringcmd);
+	MSG_WriteString (&cls.netchan.message, va("begin %i", qwcl.servercount));
+}
+
+/*
+=====================
 CLQW_Init -- one-time QW client init (called from CL_Init)
 =====================
 */
@@ -286,6 +300,7 @@ void CLQW_Init (void)
 	Cmd_AddCommand ("fullserverinfo", CLQW_FullServerinfo_f);
 	Cmd_AddCommand ("packet", CLQW_Packet_f);
 	Cmd_AddCommand ("changing", CLQW_Changing_f);
+	Cmd_AddCommand ("skins", CLQW_Skins_f);
 }
 
 #endif	/* USE_QW_PROTOCOL */
