@@ -25,6 +25,10 @@ qw_entity_state_t	qw_baselines[QW_MAX_EDICTS];
 qw_player_render_t	qw_players[QW_MAX_CLIENTS];
 int			qw_parsecount;
 
+int			qw_playerindex = -1;
+int			qw_spikeindex = -1;
+int			qw_flagindex = -1;
+
 // Snapshot ring keyed by the server packet sequence, so a delta can copy any of
 // the recently received frames forward.
 static qw_packet_entities_t	qw_snapshots[QW_UPDATE_BACKUP];
@@ -44,6 +48,31 @@ void CLQW_ClearEntities (void)
 	qw_have_snap = false;
 	qw_snap_seq = 0;
 	qw_parsecount = 0;
+	qw_playerindex = qw_spikeindex = qw_flagindex = -1;
+}
+
+/*
+==============
+CLQW_FindModelNumbers -- once the model list is loaded, cache the precache
+indices QW references by hardcoded model (player skin default, nails, CTF flag).
+==============
+*/
+void CLQW_FindModelNumbers (void)
+{
+	int		i;
+	qmodel_t	*m;
+
+	qw_playerindex = qw_spikeindex = qw_flagindex = -1;
+
+	for (i = 1; i < MAX_MODELS; i++)
+	{
+		m = cl.model_precache[i];
+		if (!m)
+			continue;
+		if (!strcmp (m->name, "progs/player.mdl"))	qw_playerindex = i;
+		else if (!strcmp (m->name, "progs/spike.mdl"))	qw_spikeindex = i;
+		else if (!strcmp (m->name, "progs/flag.mdl"))	qw_flagindex = i;
+	}
 }
 
 /*
@@ -276,6 +305,55 @@ static void CLQW_LinkPacketEntities (void)
 
 /*
 ===============
+CLQW_LinkPlayers -- draw a model for every other player present this frame at the
+position/orientation from their last playerinfo (our own player is the view and
+is never drawn).
+===============
+*/
+static void CLQW_LinkPlayers (void)
+{
+	int			j;
+	qw_player_render_t	*pl;
+	entity_t		*ent;
+	qmodel_t		*model;
+
+	for (j = 0; j < QW_MAX_CLIENTS; j++)
+	{
+		pl = &qw_players[j];
+
+		if (pl->messagenum != qw_parsecount)
+			continue;		// not present this frame
+		if (j == qwcl.playernum)
+			continue;		// that's us
+		if (pl->modelindex <= 0 || pl->modelindex >= MAX_MODELS)
+			continue;
+		model = cl.model_precache[pl->modelindex];
+		if (!model)
+			continue;
+		if (cl_numvisedicts >= MAX_VISEDICTS)
+			break;
+
+		ent = CL_EntityNum (j + 1);	// players occupy entity slots 1..MAX_CLIENTS
+		ent->model = model;
+		ent->frame = pl->frame;
+		ent->skinnum = pl->skinnum;
+		ent->alpha = 0;
+		ent->colormap = NULL;
+		ent->effects = pl->effects;
+
+		// lean the model from its own view pitch, bank it into turns
+		ent->angles[0] = -pl->viewangles[0] / 3;
+		ent->angles[1] = pl->viewangles[1];
+		ent->angles[2] = 0;
+		ent->angles[2] = V_CalcRoll (ent->angles, pl->velocity) * 4;
+
+		VectorCopy (pl->origin, ent->origin);
+		cl_visedicts[cl_numvisedicts++] = ent;
+	}
+}
+
+/*
+===============
 CLQW_EmitEntities -- rebuild the visible-entity list for this frame.
 ===============
 */
@@ -289,8 +367,9 @@ void CLQW_EmitEntities (void)
 	if (!qw_have_snap)
 		return;
 
+	CLQW_LinkPlayers ();
 	CLQW_LinkPacketEntities ();
-	// other players, nail projectiles and temp entities are added in later steps
+	// nail projectiles and temp entities are added in later steps
 }
 
 #endif	/* USE_QW_PROTOCOL */

@@ -162,6 +162,7 @@ static void CLQW_ParseModellist (void)
 		return;
 	}
 	R_NewMap ();
+	CLQW_FindModelNumbers ();	// resolve player/spike/flag model indices
 	Con_Printf ("[QW] map loaded: %s\n", cl.worldmodel->name);
 
 	// The world is up: let the engine render it. (No player position until the
@@ -202,14 +203,16 @@ static void CLQW_ParseStatic (void)
 // own player's origin (prediction), and hand entity snapshots to qw_cl_ents.c.
 // ---------------------------------------------------------------------------
 
-// A QW usercmd delta (inside playerinfo PF_COMMAND). We only need to skip it.
-static void CLQW_SkipDeltaUsercmd (void)
+// A QW usercmd delta (inside playerinfo PF_COMMAND). We keep the view angles
+// (they orient the player's model) and discard the rest.
+static void CLQW_ReadDeltaUsercmd (vec3_t out_angles)
 {
 	int	bits = MSG_ReadByte ();
 
-	if (bits & QWCM_ANGLE1)  (void) MSG_ReadAngle16 (0);
-	if (bits & QWCM_ANGLE2)  (void) MSG_ReadAngle16 (0);
-	if (bits & QWCM_ANGLE3)  (void) MSG_ReadAngle16 (0);
+	VectorCopy (vec3_origin, out_angles);
+	if (bits & QWCM_ANGLE1)  out_angles[0] = MSG_ReadAngle16 (0);
+	if (bits & QWCM_ANGLE2)  out_angles[1] = MSG_ReadAngle16 (0);
+	if (bits & QWCM_ANGLE3)  out_angles[2] = MSG_ReadAngle16 (0);
 	if (bits & QWCM_FORWARD) (void) MSG_ReadShort ();
 	if (bits & QWCM_SIDE)    (void) MSG_ReadShort ();
 	if (bits & QWCM_UP)      (void) MSG_ReadShort ();
@@ -218,30 +221,48 @@ static void CLQW_SkipDeltaUsercmd (void)
 	(void) MSG_ReadByte ();		// msec
 }
 
-// svc_playerinfo: a player's state this frame. For our own slot, stash the
-// server-authoritative origin/velocity so prediction can run forward from it.
+// svc_playerinfo: a player's state this frame. Every player is stored for
+// rendering; for our own slot we also stash the server-authoritative
+// origin/velocity so prediction can run forward from it.
 static void CLQW_ParsePlayerinfo (void)
 {
 	int	num, flags, i;
-	vec3_t	origin, velocity;
-	int	weaponframe = 0;
+	vec3_t	origin, velocity, cmdangles;
+	int	frame, modelindex, skinnum = 0, effects = 0, weaponframe = 0;
 
 	num = MSG_ReadByte ();
 	flags = MSG_ReadShort ();
 	origin[0] = MSG_ReadCoord (0);
 	origin[1] = MSG_ReadCoord (0);
 	origin[2] = MSG_ReadCoord (0);
-	(void) MSG_ReadByte ();		// frame
+	frame = MSG_ReadByte ();
+
 	if (flags & QWPF_MSEC)    (void) MSG_ReadByte ();
-	if (flags & QWPF_COMMAND) CLQW_SkipDeltaUsercmd ();
+	VectorCopy (vec3_origin, cmdangles);
+	if (flags & QWPF_COMMAND) CLQW_ReadDeltaUsercmd (cmdangles);
 	VectorCopy (vec3_origin, velocity);
 	for (i = 0; i < 3; i++)
 		if (flags & (QWPF_VELOCITY1 << i))
 			velocity[i] = MSG_ReadShort ();
-	if (flags & QWPF_MODEL)       (void) MSG_ReadByte ();
-	if (flags & QWPF_SKINNUM)     (void) MSG_ReadByte ();
-	if (flags & QWPF_EFFECTS)     (void) MSG_ReadByte ();
+	modelindex = (flags & QWPF_MODEL) ? MSG_ReadByte () : qw_playerindex;
+	if (flags & QWPF_SKINNUM)     skinnum = MSG_ReadByte ();
+	if (flags & QWPF_EFFECTS)     effects = MSG_ReadByte ();
 	if (flags & QWPF_WEAPONFRAME) weaponframe = MSG_ReadByte ();
+
+	// remember every player's state so CLQW_LinkPlayers can draw them
+	if (num < QW_MAX_CLIENTS)
+	{
+		qw_player_render_t *pl = &qw_players[num];
+		pl->messagenum = qw_parsecount;
+		VectorCopy (origin, pl->origin);
+		VectorCopy (cmdangles, pl->viewangles);
+		VectorCopy (velocity, pl->velocity);
+		pl->modelindex = modelindex;
+		pl->frame = frame;
+		pl->skinnum = skinnum;
+		pl->effects = effects;
+		pl->flags = flags;
+	}
 
 	if (num == qwcl.playernum)
 	{	// this is us: the snapshot acknowledges commands up through

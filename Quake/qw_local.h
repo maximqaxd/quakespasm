@@ -332,8 +332,14 @@ typedef struct
 extern qw_player_render_t	qw_players[QW_MAX_CLIENTS];
 extern int			qw_parsecount;	// bumped per server message
 
+// Model indices resolved from the precache list once the model list is in.
+extern int	qw_playerindex;		// progs/player.mdl (default player model)
+extern int	qw_spikeindex;		// progs/spike.mdl (nail projectiles)
+extern int	qw_flagindex;		// progs/flag.mdl (CTF)
+
 // entity parsing / linking (qw_cl_ents.c)
 void	CLQW_ClearEntities (void);		// wipe snapshot/baseline state
+void	CLQW_FindModelNumbers (void);		// resolve qw_*index from precache
 void	CLQW_ParseBaseline (int num);		// into qw_baselines[num]
 void	CLQW_ParsePacketEntities (qboolean delta);
 void	CLQW_ParseProjectiles (void);		// svc_nails
