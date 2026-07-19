@@ -109,6 +109,11 @@ void CLQW_SendMove (void)
 	if (ms < 1)   ms = 1;
 	cmd->msec = (byte) ms;
 
+	// record this command for prediction, keyed by its outgoing sequence
+	qw_frames[seq & QW_UPDATE_MASK].cmd = *cmd;
+	qw_frames[seq & QW_UPDATE_MASK].senttime = realtime;
+	qw_frames[seq & QW_UPDATE_MASK].playervalid = false;
+
 	// assemble the clc_move packet
 	buf.data = data;
 	buf.maxsize = sizeof(data);

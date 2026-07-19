@@ -218,11 +218,13 @@ static void CLQW_SkipDeltaUsercmd (void)
 	(void) MSG_ReadByte ();		// msec
 }
 
-// svc_playerinfo: a player's state this frame. For our own slot, drive the view.
+// svc_playerinfo: a player's state this frame. For our own slot, stash the
+// server-authoritative origin/velocity so prediction can run forward from it.
 static void CLQW_ParsePlayerinfo (void)
 {
 	int	num, flags, i;
-	vec3_t	origin;
+	vec3_t	origin, velocity;
+	int	weaponframe = 0;
 
 	num = MSG_ReadByte ();
 	flags = MSG_ReadShort ();
@@ -232,19 +234,32 @@ static void CLQW_ParsePlayerinfo (void)
 	(void) MSG_ReadByte ();		// frame
 	if (flags & QWPF_MSEC)    (void) MSG_ReadByte ();
 	if (flags & QWPF_COMMAND) CLQW_SkipDeltaUsercmd ();
+	VectorCopy (vec3_origin, velocity);
 	for (i = 0; i < 3; i++)
-		if (flags & (QWPF_VELOCITY1 << i)) (void) MSG_ReadShort ();
+		if (flags & (QWPF_VELOCITY1 << i))
+			velocity[i] = MSG_ReadShort ();
 	if (flags & QWPF_MODEL)       (void) MSG_ReadByte ();
 	if (flags & QWPF_SKINNUM)     (void) MSG_ReadByte ();
 	if (flags & QWPF_EFFECTS)     (void) MSG_ReadByte ();
-	if (flags & QWPF_WEAPONFRAME) (void) MSG_ReadByte ();
+	if (flags & QWPF_WEAPONFRAME) weaponframe = MSG_ReadByte ();
 
 	if (num == qwcl.playernum)
-	{	// this is us -- move the view entity to our origin
-		entity_t *ent = CL_EntityNum (num + 1);
-		VectorCopy (origin, ent->origin);
+	{	// this is us: the snapshot acknowledges commands up through
+		// incoming_acknowledged, so store it under that sequence
+		int			seq = cls.netchan.incoming_acknowledged;
+		qw_playerstate_t	*ps = &qw_frames[seq & QW_UPDATE_MASK].playerstate;
+
+		VectorCopy (origin, ps->origin);
+		VectorCopy (velocity, ps->velocity);
+		ps->weaponframe = weaponframe;
+		ps->onground = -1;
+		ps->oldbuttons = 0;
+		ps->waterjumptime = 0;
+		qw_frames[seq & QW_UPDATE_MASK].playervalid = true;
+		qw_validsequence = seq;
+
 		cl.viewentity = num + 1;
-		cl.viewheight = 22;	// DEFAULT_VIEWHEIGHT
+		cl.viewheight = DEFAULT_VIEWHEIGHT;
 	}
 }
 

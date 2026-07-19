@@ -190,6 +190,106 @@ typedef struct
 #define	QW_UPDATE_BACKUP	64	// ring of recent commands (indexed by netchan seq)
 #define	QW_UPDATE_MASK		(QW_UPDATE_BACKUP - 1)
 
+// --- client-side movement prediction (phase 4b) ------------------------------
+// The player physics (qw_pmove.c) run the same moves the server runs, so we can
+// simulate our own position from the last acknowledged state forward through the
+// not-yet-acked commands and render without waiting for the round trip.
+
+typedef struct
+{
+	vec3_t	normal;
+	float	dist;
+} qw_pmplane_t;
+
+typedef struct
+{
+	qboolean	allsolid;	// if true, plane is not valid
+	qboolean	startsolid;	// if true, the initial point was in solid
+	qboolean	inopen, inwater;
+	float		fraction;	// time completed, 1.0 = didn't hit anything
+	vec3_t		endpos;		// final position
+	qw_pmplane_t	plane;		// surface normal at impact
+	int		ent;		// entity the surface is on
+} qw_pmtrace_t;
+
+#define	QW_MAX_PHYSENTS	32
+typedef struct
+{
+	vec3_t			origin;
+	struct qmodel_s		*model;		// only for bsp models
+	vec3_t			mins, maxs;	// only for non-bsp models
+	int			info;		// identifies the entity
+} qw_physent_t;
+
+typedef struct
+{
+	int		sequence;	// just for debugging prints
+
+	// player state
+	vec3_t		origin;
+	vec3_t		angles;
+	vec3_t		velocity;
+	int		oldbuttons;
+	float		waterjumptime;
+	qboolean	dead;
+	int		spectator;
+
+	// world state
+	int		numphysent;
+	qw_physent_t	physents[QW_MAX_PHYSENTS];	// 0 is the world
+
+	// input
+	qw_usercmd_t	cmd;
+
+	// results
+	int		numtouch;
+	int		touchindex[QW_MAX_PHYSENTS];
+} qw_playermove_t;
+
+// Per-frame player state used by prediction: the server-authoritative snapshot
+// for our slot, then overwritten with predicted results as later commands are
+// replayed through the physics.
+typedef struct
+{
+	vec3_t	origin;
+	vec3_t	velocity;
+	vec3_t	viewangles;
+	int	weaponframe;
+	int	onground;	// -1 = in air, else physent number
+	int	oldbuttons;
+	float	waterjumptime;
+} qw_playerstate_t;
+
+// A slot in the command/state ring, indexed by netchan sequence. The command is
+// filled when we send it (outgoing sequence); the playerstate is filled from the
+// server snapshot that acknowledges it (incoming_acknowledged).
+typedef struct
+{
+	qw_usercmd_t		cmd;		// command built for this outgoing sequence
+	double			senttime;	// realtime the command was sent
+	qboolean		playervalid;	// playerstate holds a server snapshot
+	qw_playerstate_t	playerstate;	// server truth (at ack), then predicted
+} qw_frame_t;
+
+extern qw_frame_t	qw_frames[QW_UPDATE_BACKUP];
+extern int		qw_validsequence;	// netchan seq of the last good snapshot
+extern vec3_t		qw_simorg;		// predicted view origin
+extern vec3_t		qw_simvel;		// predicted velocity
+extern vec3_t		qw_simangles;		// predicted view angles
+
+// player physics (qw_pmove.c)
+extern qw_playermove_t	qw_pmove;
+extern int		qw_onground;
+extern int		qw_waterlevel;
+extern int		qw_watertype;
+
+void	QWPM_Init (void);				// one-time box-hull setup
+void	QWPM_PlayerMove (void);				// run one command's physics
+
+// prediction (qw_cl_pred.c)
+void	CLQW_InitPrediction (void);
+void	CLQW_PredictMove (void);
+
 // --- module entry points (filled in across the port phases) ------------------
 void	CLQW_Init (void);				// one-time QW client init (from CL_Init)
 void	CLQW_EstablishConnection (const char *host);	// connectionless handshake start

@@ -193,6 +193,11 @@ void CLQW_RunConnection (void)
 	// alive during the handshake.
 	if (qw_connstate == QWCS_CONNECTED && QWNetchan_CanPacket (&cls.netchan))
 		CLQW_SendMove ();
+
+	// simulate our position forward from the last snapshot so the view follows
+	// input immediately instead of after a network round trip.
+	if (qw_connstate == QWCS_CONNECTED)
+		CLQW_PredictMove ();
 }
 
 /*
@@ -308,6 +313,7 @@ void CLQW_Init (void)
 {
 	QWNET_Init ();
 	QWNetchan_Init ();
+	CLQW_InitPrediction ();
 	Cvar_RegisterVariable (&qw_rate);
 	Cmd_AddCommand ("fullserverinfo", CLQW_FullServerinfo_f);
 	Cmd_AddCommand ("packet", CLQW_Packet_f);
