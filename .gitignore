@@ -4,10 +4,10 @@ Quake/quakespasm.elf
 Quake/quakespasm.stripped.elf
 Quake/quakespasm.cdi
 
-# Copyrighted game data -- never commit
+# Copyrighted game data -- never commit (the disc data lives in Dreamcast/cd)
 *.pak
 *.PAK
-Quake/cd/id1/music/
+Dreamcast/cd/id1/music/
 
 # Agent / editor state
 .claude/

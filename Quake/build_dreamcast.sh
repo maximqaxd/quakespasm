@@ -7,8 +7,8 @@
 #   1. compile + link quakespasm.elf   (Makefile.dreamcast, kos-cc)
 #   2. bundle the cd/ folder + elf into quakespasm.cdi via mkdcdisc
 #
-# Game data lives under ./cd (mounts at /cd on the Dreamcast, the engine's
-# basedir). Put pak files in cd/id1/ before running -- see cd/id1/*.txt.
+# Game data lives under ../Dreamcast/cd (mounts at /cd on the Dreamcast, the
+# engine's basedir). Put pak files in Dreamcast/cd/id1/ before running.
 #
 # Usage:
 #   ./build_dreamcast.sh              # build elf + cdi
@@ -24,7 +24,9 @@ cd "$SCRIPT_DIR"
 
 TARGET_ELF="quakespasm.elf"
 TARGET_CDI="quakespasm.cdi"
-DATA_DIR="cd"
+# Disc data (id1/ with pak files + music) lives at <repo root>/Dreamcast/cd.
+# The script runs from Quake/, so reach it one level up.
+DATA_DIR="../Dreamcast/cd"
 GAME_NAME="quakespasm"
 JOBS="${JOBS:-$(nproc 2>/dev/null || echo 4)}"
 # Native PVR renderer on by default. Override with USE_PVR_RENDER=0 for the GLdc path.
