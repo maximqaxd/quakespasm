@@ -311,24 +311,122 @@ static void CLQW_ParseSound (void)
 		S_StartSound (ent, channel, cl.sound_precache[sound_num], pos, volume / 255.0f, attenuation);
 }
 
-// svc_temp_entity: skip the point/beam data (spawning the effect is phase 3b).
+// QuakeWorld temp-entity types. They differ from NetQuake's: GUNSHOT and BLOOD
+// carry a particle count, and 12/13 are BLOOD/LIGHTNINGBLOOD (not EXPLOSION2/BEAM).
+#define	QWTE_SPIKE		0
+#define	QWTE_SUPERSPIKE		1
+#define	QWTE_GUNSHOT		2
+#define	QWTE_EXPLOSION		3
+#define	QWTE_TAREXPLOSION	4
+#define	QWTE_LIGHTNING1		5
+#define	QWTE_LIGHTNING2		6
+#define	QWTE_WIZSPIKE		7
+#define	QWTE_KNIGHTSPIKE	8
+#define	QWTE_LIGHTNING3		9
+#define	QWTE_LAVASPLASH		10
+#define	QWTE_TELEPORT		11
+#define	QWTE_BLOOD		12
+#define	QWTE_LIGHTNINGBLOOD	13
+
+// shared temp-entity sounds and beam parser, defined in cl_tent.c
+extern sfx_t	*cl_sfx_wizhit, *cl_sfx_knighthit, *cl_sfx_tink1;
+extern sfx_t	*cl_sfx_ric1, *cl_sfx_ric2, *cl_sfx_ric3, *cl_sfx_r_exp3;
+void CL_ParseBeam (qmodel_t *m);
+
+// spike/superspike ricochet: mostly a tink, occasionally a random ricochet
+static void CLQW_RicochetSound (vec3_t pos)
+{
+	if (rand () % 5)
+		S_StartSound (-1, 0, cl_sfx_tink1, pos, 1, 1);
+	else
+	{
+		int rnd = rand () & 3;
+		if (rnd == 1)      S_StartSound (-1, 0, cl_sfx_ric1, pos, 1, 1);
+		else if (rnd == 2) S_StartSound (-1, 0, cl_sfx_ric2, pos, 1, 1);
+		else               S_StartSound (-1, 0, cl_sfx_ric3, pos, 1, 1);
+	}
+}
+
+// svc_temp_entity: one-shot particle/light/beam effects.
 static void CLQW_ParseTEnt (void)
 {
-	int	type = MSG_ReadByte ();
-	int	i;
+	int		type = MSG_ReadByte ();
+	vec3_t		pos;
+	dlight_t	*dl;
+	int		cnt, i;
 
 	switch (type)
 	{
-	case 5: case 6: case 9:		// TE_LIGHTNING1/2/3 -- entity + start + end
-		(void) MSG_ReadShort ();
-		for (i = 0; i < 6; i++) (void) MSG_ReadCoord (0);
+	case QWTE_LIGHTNING1:
+		CL_ParseBeam (Mod_ForName ("progs/bolt.mdl", true));
+		return;
+	case QWTE_LIGHTNING2:
+		CL_ParseBeam (Mod_ForName ("progs/bolt2.mdl", true));
+		return;
+	case QWTE_LIGHTNING3:
+		CL_ParseBeam (Mod_ForName ("progs/bolt3.mdl", true));
+		return;
+	}
+
+	cnt = -1;
+	if (type == QWTE_GUNSHOT || type == QWTE_BLOOD)
+		cnt = MSG_ReadByte ();		// particle multiplier
+	for (i = 0; i < 3; i++)
+		pos[i] = MSG_ReadCoord (0);
+
+	switch (type)
+	{
+	case QWTE_GUNSHOT:
+		R_RunParticleEffect (pos, vec3_origin, 0, 20 * cnt);
 		break;
-	case 2: case 12:		// TE_GUNSHOT / TE_BLOOD -- count + point
-		(void) MSG_ReadByte ();
-		for (i = 0; i < 3; i++) (void) MSG_ReadCoord (0);
+	case QWTE_BLOOD:
+		R_RunParticleEffect (pos, vec3_origin, 73, 20 * cnt);
 		break;
-	default:			// spikes, explosions, splashes, teleport -- point
-		for (i = 0; i < 3; i++) (void) MSG_ReadCoord (0);
+	case QWTE_LIGHTNINGBLOOD:
+		R_RunParticleEffect (pos, vec3_origin, 225, 50);
+		break;
+
+	case QWTE_WIZSPIKE:
+		R_RunParticleEffect (pos, vec3_origin, 20, 30);
+		S_StartSound (-1, 0, cl_sfx_wizhit, pos, 1, 1);
+		break;
+	case QWTE_KNIGHTSPIKE:
+		R_RunParticleEffect (pos, vec3_origin, 226, 20);
+		S_StartSound (-1, 0, cl_sfx_knighthit, pos, 1, 1);
+		break;
+
+	case QWTE_SPIKE:
+		R_RunParticleEffect (pos, vec3_origin, 0, 10);
+		CLQW_RicochetSound (pos);
+		break;
+	case QWTE_SUPERSPIKE:
+		R_RunParticleEffect (pos, vec3_origin, 0, 20);
+		CLQW_RicochetSound (pos);
+		break;
+
+	case QWTE_EXPLOSION:
+		R_ParticleExplosion (pos);
+		dl = CL_AllocDlight (0);
+		VectorCopy (pos, dl->origin);
+		dl->radius = 350;
+		dl->die = cl.time + 0.5;
+		dl->decay = 300;
+		S_StartSound (-1, 0, cl_sfx_r_exp3, pos, 1, 1);
+		break;
+	case QWTE_TAREXPLOSION:
+		R_BlobExplosion (pos);
+		S_StartSound (-1, 0, cl_sfx_r_exp3, pos, 1, 1);
+		break;
+
+	case QWTE_LAVASPLASH:
+		R_LavaSplash (pos);
+		break;
+	case QWTE_TELEPORT:
+		R_TeleportSplash (pos);
+		break;
+
+	default:
+		Con_DPrintf ("[QW] unknown temp entity %i\n", type);
 		break;
 	}
 }

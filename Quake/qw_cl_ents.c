@@ -454,7 +454,9 @@ void CLQW_EmitEntities (void)
 	CLQW_LinkPlayers ();
 	CLQW_LinkPacketEntities ();
 	CLQW_LinkProjectiles ();
-	// temp entities are added in a later step
+	CL_UpdateTEnts ();		// animate + link active lightning beams
+
+	CL_DecayLights ();		// fade explosion/muzzle dynamic lights
 }
 
 #endif	/* USE_QW_PROTOCOL */
