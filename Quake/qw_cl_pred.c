@@ -194,6 +194,10 @@ void CLQW_PredictMove (void)
 	VectorCopy (to->origin, qw_simorg);
 	VectorCopy (to->velocity, qw_simvel);
 
+	// feed the on-ground state to the view code: without it the stair-step
+	// camera smoothing never runs and every step reads as a vertical snap
+	cl.onground = (to->onground != -1);
+
 	// glide out any leftover prediction error instead of snapping to it
 	{
 		float	frac = 1.0f - (realtime - qw_prediction_error_time) / QW_ERROR_DECAY;

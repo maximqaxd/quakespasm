@@ -376,7 +376,8 @@ static void CLQW_LinkPacketEntities (void)
 		ent->model = model;
 		ent->frame = s1->frame;
 		ent->skinnum = s1->skinnum;
-		ent->alpha = 0;		// ENTALPHA_DEFAULT -> opaque
+		ent->alpha = 0;			// ENTALPHA_DEFAULT -> opaque
+		ent->scale = ENTSCALE_DEFAULT;	// CL_EntityNum only primes baseline.scale
 		ent->colormap = NULL;
 		ent->effects = s1->effects;
 
@@ -460,6 +461,7 @@ static void CLQW_LinkPlayers (void)
 		ent->frame = pl->frame;
 		ent->skinnum = pl->skinnum;
 		ent->alpha = 0;
+		ent->scale = ENTSCALE_DEFAULT;
 		ent->colormap = NULL;
 		ent->effects = pl->effects;
 
@@ -529,6 +531,7 @@ static void CLQW_LinkProjectiles (void)
 		memset (ent, 0, sizeof(*ent));
 		ent->model = model;
 		ent->alpha = 0;
+		ent->scale = ENTSCALE_DEFAULT;
 		VectorCopy (pr->origin, ent->origin);
 		VectorCopy (pr->angles, ent->angles);
 		cl_visedicts[cl_numvisedicts++] = ent;
