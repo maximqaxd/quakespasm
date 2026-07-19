@@ -1001,8 +1001,8 @@ again:
 //=============================================================================
 /* QUAKEWORLD SERVER BROWSER */
 
-#define	QWLIST_HEADER	2	// address field + refresh action
-#define	QWLIST_ROWS	14	// visible server rows
+#define	QWLIST_HEADER	3	// address field + spectator toggle + refresh action
+#define	QWLIST_ROWS	12	// visible server rows
 
 static int	qwlist_cursor;		// 0=address, 1=refresh, 2+=server rows
 static int	qwlist_scroll;		// first visible server index
@@ -1034,11 +1034,15 @@ void M_QWList_Draw (void)
 	if (qwlist_cursor == 0)
 		M_DrawCharacter (88 + 8 * strlen (qwlist_address), 48, 10 + ((int)(realtime * 4) & 1));
 
+	// spectator toggle
+	M_Print (16, 64, "Spectator");
+	M_Print (176, 64, CLQW_Spectator () ? "on" : "off");
+
 	// refresh action
-	M_Print (16, 64, "Refresh from master");
+	M_Print (16, 80, "Refresh from master");
 
 	// the received server list
-	y = 80;
+	y = 96;
 	if (qw_numservers == 0)
 		M_Print (24, y, "no servers -- Refresh");
 	else for (i = 0; i < QWLIST_ROWS && qwlist_scroll + i < qw_numservers; i++)
@@ -1047,6 +1051,8 @@ void M_QWList_Draw (void)
 	// blinking cursor
 	if (qwlist_cursor == 1)
 		M_DrawCharacter (8, 64, 12 + ((int)(realtime * 4) & 1));
+	else if (qwlist_cursor == 2)
+		M_DrawCharacter (8, 80, 12 + ((int)(realtime * 4) & 1));
 	else if (qwlist_cursor >= QWLIST_HEADER)
 	{
 		int row = qwlist_cursor - QWLIST_HEADER - qwlist_scroll;
@@ -1088,6 +1094,15 @@ void M_QWList_Key (int key)
 			qwlist_cursor = 0;
 		break;
 
+	case K_LEFTARROW:
+	case K_RIGHTARROW:
+		if (qwlist_cursor == 1)
+		{
+			S_LocalSound ("misc/menu3.wav");
+			CLQW_SetSpectator (!CLQW_Spectator ());
+		}
+		break;
+
 	case K_ENTER:
 	case K_KP_ENTER:
 	case K_ABUTTON:
@@ -1095,6 +1110,8 @@ void M_QWList_Key (int key)
 		if (qwlist_cursor == 0)
 			M_QWList_Connect (qwlist_address);
 		else if (qwlist_cursor == 1)
+			CLQW_SetSpectator (!CLQW_Spectator ());
+		else if (qwlist_cursor == 2)
 			CLQW_SList_Query (NULL);
 		else
 			M_QWList_Connect (QWNET_AdrToString (qw_serverlist[qwlist_cursor - QWLIST_HEADER]));

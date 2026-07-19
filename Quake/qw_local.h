@@ -379,6 +379,8 @@ void	CLQW_Init (void);				// one-time QW client init (from CL_Init)
 void	CLQW_EstablishConnection (const char *host);	// connectionless handshake start
 void	CLQW_Disconnect (void);				// tear down the QW connection
 qboolean CLQW_IsIdle (void);				// no QW connection in progress
+qboolean CLQW_Spectator (void);				// joining/joined as a spectator?
+void	CLQW_SetSpectator (qboolean on);
 
 // Master server browser (qw_cl_slist.c). The server list itself lives in qw_net.h
 // with qw_netadr_t (declared before this header); these entry points don't need it.

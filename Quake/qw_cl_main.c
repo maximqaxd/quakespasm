@@ -40,6 +40,13 @@ double	qw_latency;
 // (or lower) on a modem. Archived so it persists.
 cvar_t	qw_rate = {"rate", "10000", CVAR_ARCHIVE};
 
+// Ask to join as a spectator (free-fly watcher) rather than a player. The server
+// must have a spectator slot free; it echoes the choice in serverdata.
+cvar_t	qw_spectator = {"spectator", "0", CVAR_ARCHIVE};
+
+qboolean CLQW_Spectator (void)		{ return qw_spectator.value != 0; }
+void CLQW_SetSpectator (qboolean on)	{ Cvar_SetValue ("spectator", on ? 1 : 0); }
+
 // True once the netchan is up, so command forwarding can write to it.
 qboolean CLQW_IsConnected (void)
 {
@@ -62,15 +69,20 @@ CLQW_BuildUserinfo -- minimal userinfo string the server needs to accept us
 */
 static void CLQW_BuildUserinfo (char *out, size_t outsize)
 {
-	extern cvar_t	cl_name;
+	extern cvar_t	cl_name, cl_color;
 	const char	*name = (cl_name.string && cl_name.string[0]) ? cl_name.string : "dreamcast";
 
 	int	rate = (int) qw_rate.value;
+	int	top = ((int) cl_color.value) >> 4;
+	int	bottom = ((int) cl_color.value) & 15;
 
 	if (rate < 500)		rate = 500;	// clamp to sane bounds
 	if (rate > 100000)	rate = 100000;
 
-	q_snprintf (out, outsize, "\\name\\%s\\rate\\%i\\msg\\1\\topcolor\\0\\bottomcolor\\0", name, rate);
+	q_snprintf (out, outsize,
+		"\\name\\%s\\rate\\%i\\msg\\1\\topcolor\\%i\\bottomcolor\\%i%s",
+		name, rate, top, bottom,
+		qw_spectator.value ? "\\spectator\\1" : "");
 }
 
 /*
@@ -376,6 +388,7 @@ void CLQW_Init (void)
 	CLQW_InitPrediction ();
 	CLQW_SList_Init ();
 	Cvar_RegisterVariable (&qw_rate);
+	Cvar_RegisterVariable (&qw_spectator);
 	Cmd_AddCommand ("fullserverinfo", CLQW_FullServerinfo_f);
 	Cmd_AddCommand ("packet", CLQW_Packet_f);
 	Cmd_AddCommand ("changing", CLQW_Changing_f);
