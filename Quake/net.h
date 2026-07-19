@@ -49,6 +49,11 @@ extern	int		net_activeconnections;
 void	NET_Init (void);
 void	NET_Shutdown (void);
 
+#if defined(PLATFORM_DREAMCAST)
+void	NET_DC_ModemInit (void);	// modem/PPP dial-up (net_dc.c)
+void	NET_DC_ModemShutdown (void);
+#endif
+
 struct qsocket_s	*NET_CheckNewConnections (void);
 // returns a new connection number if there is one pending, else -1
 

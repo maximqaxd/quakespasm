@@ -804,6 +804,12 @@ void NET_Init (void)
 	Cmd_AddCommand ("maxplayers", MaxPlayers_f);
 	Cmd_AddCommand ("port", NET_Port_f);
 
+#if defined(PLATFORM_DREAMCAST)
+	// Bring up the modem (PPP dial-up) before the UDP driver: if it auto-dials,
+	// net_default_dev is valid by the time UDP_Init reads the local address.
+	NET_DC_ModemInit ();
+#endif
+
 	// initialize all the drivers
 	for (i = net_driverlevel = 0; net_driverlevel < net_numdrivers; net_driverlevel++)
 	{
@@ -860,6 +866,10 @@ void NET_Shutdown (void)
 			net_drivers[net_driverlevel].initialized = false;
 		}
 	}
+
+#if defined(PLATFORM_DREAMCAST)
+	NET_DC_ModemShutdown ();
+#endif
 }
 
 

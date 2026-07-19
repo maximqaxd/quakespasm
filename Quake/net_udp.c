@@ -161,6 +161,35 @@ void UDP_Shutdown (void)
 	UDP_CloseSocket (net_controlsocket);
 }
 
+#if defined(PLATFORM_DREAMCAST)
+/*
+====================
+UDP_DC_RefreshLocal -- re-read the local address after a link comes up post-init.
+
+UDP_Init runs at host startup, before the modem is dialed, so myAddr is still
+loopback for a modem-only box. The dial path calls this once net_default_dev has
+a negotiated IP so my_tcpip_address (and outbound sockaddrs) reflect it.
+====================
+*/
+void UDP_DC_RefreshLocal (void)
+{
+	struct qsockaddr	addr;
+	char			*tst;
+
+	if (!net_default_dev)
+		return;
+	memcpy (&myAddr, net_default_dev->ip_addr, 4);	// already network byte order
+
+	if (net_controlsocket != INVALID_SOCKET)
+	{
+		UDP_GetSocketAddr (net_controlsocket, &addr);
+		strcpy (my_tcpip_address, UDP_AddrToString (&addr));
+		tst = strrchr (my_tcpip_address, ':');
+		if (tst) *tst = 0;
+	}
+}
+#endif	/* PLATFORM_DREAMCAST */
+
 //=============================================================================
 
 void UDP_Listen (qboolean state)
