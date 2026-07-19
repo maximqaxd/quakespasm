@@ -51,6 +51,9 @@ void M_Menu_Main_f (void);
 		void M_QWList_Key (int key);
 		void M_QWList_Char (int key);
 		qboolean M_QWList_TextEntry (void);
+		void M_Menu_QWDetail_f (void);
+		void M_QWDetail_Draw (void);
+		void M_QWDetail_Key (int key);
 #endif
 
 void M_Main_Draw (void);
@@ -1001,12 +1004,26 @@ again:
 //=============================================================================
 /* QUAKEWORLD SERVER BROWSER */
 
-#define	QWLIST_HEADER	3	// address field + spectator toggle + refresh action
-#define	QWLIST_ROWS	12	// visible server rows
+#define	QWLIST_HEADER	2	// address field + refresh action
+#define	QWLIST_ROWS	13	// visible server rows
 
 static int	qwlist_cursor;		// 0=address, 1=refresh, 2+=server rows
 static int	qwlist_scroll;		// first visible server index
 static char	qwlist_address[32];
+
+// Connect to the currently detailed server, as player or spectator.
+static void M_QWDetail_Connect (qboolean spectate)
+{
+	if (qw_detail_index < 0 || qw_detail_index >= qw_numservers)
+		return;
+	CLQW_SetSpectator (spectate);
+	CLQW_SList_Deactivate ();
+	key_dest = key_game;
+	m_state = m_none;
+	IN_Activate ();
+	Cbuf_AddText (va ("connect \"%s\" qw\n",
+		QWNET_AdrToString (qw_serverlist[qw_detail_index].adr)));
+}
 
 void M_Menu_QWList_f (void)
 {
@@ -1014,61 +1031,68 @@ void M_Menu_QWList_f (void)
 	key_dest = key_menu;
 	m_state = m_qwlist;
 	m_entersound = true;
+	CLQW_SList_Activate ();
 }
 
 void M_QWList_Draw (void)
 {
-	qpic_t	*p;
-	int	i, y;
+	qpic_t		*p;
+	int		i, y;
 
-	M_DrawTransPic (16, 4, Draw_CachePic ("gfx/qplaque.lmp"));
+	// no qplaque strip here: like the stock server list, use the full width so
+	// the columns don't collide with the plaque or run off the right edge
 	p = Draw_CachePic ("gfx/p_multi.lmp");
 	M_DrawPic ((320 - p->width) / 2, 4, p);
 
-	M_Print (72, 32, "QuakeWorld");
-
-	// direct-connect address field
-	M_Print (16, 48, "Connect");
-	M_DrawTextBox (80, 40, 22, 1);
-	M_Print (88, 48, qwlist_address);
+	M_Print (16, 32, "Connect");
+	M_DrawTextBox (88, 24, 24, 1);
+	M_Print (96, 32, qwlist_address);
 	if (qwlist_cursor == 0)
-		M_DrawCharacter (88 + 8 * strlen (qwlist_address), 48, 10 + ((int)(realtime * 4) & 1));
+		M_DrawCharacter (96 + 8 * strlen (qwlist_address), 32, 10 + ((int)(realtime * 4) & 1));
 
-	// spectator toggle
-	M_Print (16, 64, "Spectator");
-	M_Print (176, 64, CLQW_Spectator () ? "on" : "off");
+	M_Print (16, 48, "Refresh from master");
 
-	// refresh action
-	M_Print (16, 80, "Refresh from master");
+	// column header + rows: name | map | ping | players
+	M_PrintWhite (16, 62, "Server");
+	M_PrintWhite (160, 62, "Map");
+	M_PrintWhite (224, 62, "Ping");
+	M_PrintWhite (256, 62, "Pl");
 
-	// the received server list
-	y = 96;
+	y = 72;
 	if (qw_numservers == 0)
-		M_Print (24, y, "no servers -- Refresh");
+		M_Print (16, y, "no servers -- Refresh");
 	else for (i = 0; i < QWLIST_ROWS && qwlist_scroll + i < qw_numservers; i++)
-		M_Print (24, y + i * 8, QWNET_AdrToString (qw_serverlist[qwlist_scroll + i]));
+	{
+		qw_server_t	*s = &qw_serverlist[qwlist_scroll + i];
+		char		buf[24];
+		int		ty = y + i * 8;
+
+		q_strlcpy (buf, s->name, 18);		// name/IP, fit before Map
+		M_Print (16, ty, buf);
+		q_strlcpy (buf, s->map, 8);		// map, fit before Ping
+		M_Print (160, ty, buf);
+		if (s->ping < 0)
+			M_Print (224, ty, "...");
+		else
+		{
+			q_snprintf (buf, sizeof(buf), "%i", s->ping);
+			M_Print (224, ty, buf);
+		}
+		q_snprintf (buf, sizeof(buf), "%i/%i", s->curplayers, s->maxplayers);
+		M_Print (256, ty, buf);
+	}
 
 	// blinking cursor
-	if (qwlist_cursor == 1)
-		M_DrawCharacter (8, 64, 12 + ((int)(realtime * 4) & 1));
-	else if (qwlist_cursor == 2)
-		M_DrawCharacter (8, 80, 12 + ((int)(realtime * 4) & 1));
-	else if (qwlist_cursor >= QWLIST_HEADER)
+	if (qwlist_cursor == 0)
+		; // caret drawn in the field above
+	else if (qwlist_cursor == 1)
+		M_DrawCharacter (8, 48, 12 + ((int)(realtime * 4) & 1));
+	else
 	{
 		int row = qwlist_cursor - QWLIST_HEADER - qwlist_scroll;
 		if (row >= 0 && row < QWLIST_ROWS)
-			M_DrawCharacter (16, y + row * 8, 12 + ((int)(realtime * 4) & 1));
+			M_DrawCharacter (8, y + row * 8, 12 + ((int)(realtime * 4) & 1));
 	}
-}
-
-static void M_QWList_Connect (const char *addr)
-{
-	if (!addr || !addr[0])
-		return;
-	key_dest = key_game;
-	m_state = m_none;
-	IN_Activate ();
-	Cbuf_AddText (va ("connect \"%s\" qw\n", addr));
 }
 
 void M_QWList_Key (int key)
@@ -1079,6 +1103,7 @@ void M_QWList_Key (int key)
 	{
 	case K_ESCAPE:
 	case K_BBUTTON:
+		CLQW_SList_Deactivate ();
 		M_Menu_MultiPlayer_f ();
 		return;
 
@@ -1094,27 +1119,26 @@ void M_QWList_Key (int key)
 			qwlist_cursor = 0;
 		break;
 
-	case K_LEFTARROW:
-	case K_RIGHTARROW:
-		if (qwlist_cursor == 1)
-		{
-			S_LocalSound ("misc/menu3.wav");
-			CLQW_SetSpectator (!CLQW_Spectator ());
-		}
-		break;
-
 	case K_ENTER:
 	case K_KP_ENTER:
 	case K_ABUTTON:
 		m_entersound = true;
 		if (qwlist_cursor == 0)
-			M_QWList_Connect (qwlist_address);
+		{	// direct connect to the typed address
+			if (qwlist_address[0])
+			{
+				CLQW_SList_Deactivate ();
+				CLQW_SetSpectator (false);
+				key_dest = key_game;
+				m_state = m_none;
+				IN_Activate ();
+				Cbuf_AddText (va ("connect \"%s\" qw\n", qwlist_address));
+			}
+		}
 		else if (qwlist_cursor == 1)
-			CLQW_SetSpectator (!CLQW_Spectator ());
-		else if (qwlist_cursor == 2)
 			CLQW_SList_Query (NULL);
-		else
-			M_QWList_Connect (QWNET_AdrToString (qw_serverlist[qwlist_cursor - QWLIST_HEADER]));
+		else				// open the per-server detail page
+			M_Menu_QWDetail_f ();
 		break;
 
 	case K_BACKSPACE:
@@ -1156,6 +1180,108 @@ void M_QWList_Char (int key)
 qboolean M_QWList_TextEntry (void)
 {
 	return qwlist_cursor == 0;
+}
+
+//=============================================================================
+/* QUAKEWORLD SERVER DETAIL */
+
+static int	qwdetail_cursor;	// 0=Connect, 1=Spectate, 2=Back
+
+void M_Menu_QWDetail_f (void)
+{
+	key_dest = key_menu;
+	m_state = m_qwdetail;
+	m_entersound = true;
+	qwdetail_cursor = 0;
+	CLQW_SList_OpenDetail (qwlist_cursor - QWLIST_HEADER);	// fetch player list
+}
+
+void M_QWDetail_Draw (void)
+{
+	qpic_t		*p;
+	qw_server_t	*s;
+	char		buf[48];
+	int		i, y;
+
+	// no qplaque strip -- full width for the header lines and player table
+	p = Draw_CachePic ("gfx/p_multi.lmp");
+	M_DrawPic ((320 - p->width) / 2, 4, p);
+
+	if (qw_detail_index < 0 || qw_detail_index >= qw_numservers)
+		return;
+	s = &qw_serverlist[qw_detail_index];
+
+	M_PrintWhite (16, 32, s->name);
+	M_Print (16, 44, QWNET_AdrToString (s->adr));
+	q_snprintf (buf, sizeof(buf), "map %s  %i/%i players  %i ms",
+		s->map, s->curplayers, s->maxplayers, s->ping < 0 ? 0 : s->ping);
+	M_Print (16, 52, buf);
+
+	// player table: name | frags | time (minutes)
+	M_PrintWhite (16, 68, "Name");
+	M_PrintWhite (176, 68, "Frags");
+	M_PrintWhite (232, 68, "Time");
+	y = 78;
+	for (i = 0; i < qw_detail_numplayers && i < 13; i++)
+	{
+		qw_playerinfo_t	*pl = &qw_detail_players[i];
+
+		q_strlcpy (buf, pl->name, 20);
+		M_Print (16, y + i * 8, buf);
+		q_snprintf (buf, sizeof(buf), "%i", pl->frags);
+		M_Print (176, y + i * 8, buf);
+		q_snprintf (buf, sizeof(buf), "%i", pl->mins);
+		M_Print (232, y + i * 8, buf);
+	}
+	if (qw_detail_numplayers == 0)
+		M_Print (16, y, "no players / waiting...");
+
+	// buttons
+	M_Print (32, 184, "Connect");
+	M_Print (120, 184, "Spectate");
+	M_Print (232, 184, "Back");
+	{
+		static const int caret_x[3] = { 24, 112, 224 };
+		M_DrawCharacter (caret_x[qwdetail_cursor], 184, 12 + ((int)(realtime * 4) & 1));
+	}
+}
+
+void M_QWDetail_Key (int key)
+{
+	switch (key)
+	{
+	case K_ESCAPE:
+	case K_BBUTTON:
+		M_Menu_QWList_f ();
+		return;
+
+	case K_LEFTARROW:
+		S_LocalSound ("misc/menu1.wav");
+		if (--qwdetail_cursor < 0)
+			qwdetail_cursor = 2;
+		break;
+
+	case K_RIGHTARROW:
+		S_LocalSound ("misc/menu1.wav");
+		if (++qwdetail_cursor > 2)
+			qwdetail_cursor = 0;
+		break;
+
+	case K_ENTER:
+	case K_KP_ENTER:
+	case K_ABUTTON:
+		m_entersound = true;
+		if (qwdetail_cursor == 0)
+			M_QWDetail_Connect (false);	// join as player
+		else if (qwdetail_cursor == 1)
+			M_QWDetail_Connect (true);	// join as spectator
+		else
+			M_Menu_QWList_f ();		// back
+		break;
+
+	default:
+		break;
+	}
 }
 
 #endif	/* USE_QW_PROTOCOL */
@@ -2855,6 +2981,9 @@ void M_Draw (void)
 	case m_qwlist:
 		M_QWList_Draw ();
 		break;
+	case m_qwdetail:
+		M_QWDetail_Draw ();
+		break;
 #endif
 	}
 
@@ -2941,6 +3070,9 @@ void M_Keydown (int key)
 #if defined(USE_QW_PROTOCOL)
 	case m_qwlist:
 		M_QWList_Key (key);
+		return;
+	case m_qwdetail:
+		M_QWDetail_Key (key);
 		return;
 #endif
 	}

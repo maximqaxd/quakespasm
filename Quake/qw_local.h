@@ -385,9 +385,25 @@ void	CLQW_SetSpectator (qboolean on);
 // Master server browser (qw_cl_slist.c). The server list itself lives in qw_net.h
 // with qw_netadr_t (declared before this header); these entry points don't need it.
 extern int	qw_numservers;
-void	CLQW_SList_Init (void);		// register slist command + qw_master cvar
-void	CLQW_SList_Poll (void);		// drain the master reply (called each frame)
-void	CLQW_SList_Query (const char *master);	// send the list request
+
+// Player line from a server's status reply, for the detail page.
+typedef struct
+{
+	char	name[32];
+	int	frags;
+	int	mins;		// minutes connected
+} qw_playerinfo_t;
+
+extern qw_playerinfo_t	qw_detail_players[QW_MAX_CLIENTS];
+extern int		qw_detail_numplayers;
+extern int		qw_detail_index;	// qw_serverlist index shown, -1 = none
+
+void	CLQW_SList_Init (void);		// register slist command + qw_masters cvar
+void	CLQW_SList_Poll (void);		// per-frame browser tick (replies + probes)
+void	CLQW_SList_Query (const char *master);	// (re)query the master(s)
+void	CLQW_SList_Activate (void);	// browser opened -- begin probing
+void	CLQW_SList_Deactivate (void);	// browser closed
+void	CLQW_SList_OpenDetail (int index);	// select a server, fetch its players
 void	CLQW_RunConnection (void);			// per-frame pump (from Host_Frame)
 void	CLQW_ParseServerMessage (void);			// parse a netchan message (qw_cl_parse.c)
 qboolean CLQW_IsConnected (void);			// netchan established?

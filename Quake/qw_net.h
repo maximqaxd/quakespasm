@@ -37,11 +37,23 @@ qboolean	QWNET_CompareAdr (qw_netadr_t a, qw_netadr_t b);
 qboolean	QWNET_CompareBaseAdr (qw_netadr_t a, qw_netadr_t b);	// ignores port
 const char     *QWNET_AdrToString (qw_netadr_t a);
 qboolean	QWNET_StringToAdr (const char *s, qw_netadr_t *a);	// "host[:port]"
-void		QWNET_SetPort (qw_netadr_t *a, int port);		// host-order port
+void		QWNET_SetPort (qw_netadr_t *a, int port);		// set host-order port
 
-// Master server browser list (qw_cl_slist.c); needs qw_netadr_t.
+// Master server browser list (qw_cl_slist.c); needs qw_netadr_t. Each entry is
+// an address from the master plus the summary scraped from its status reply.
 #define	QW_MAX_SERVERS	256
-extern qw_netadr_t	qw_serverlist[QW_MAX_SERVERS];
+typedef struct
+{
+	qw_netadr_t	adr;
+	char		name[48];	// hostname, or the address until it answers
+	char		map[16];
+	short		ping;		// ms round-trip; -1 unknown, 999 = no answer
+	byte		curplayers;
+	byte		maxplayers;
+	double		sent;		// realtime the status query went out
+	byte		state;		// 0 new, 1 status sent, 2 answered
+} qw_server_t;
+extern qw_server_t	qw_serverlist[QW_MAX_SERVERS];
 
 // --- netchan (qw_netchan.c) --------------------------------------------------
 #define	QW_MAX_LATENT	32
