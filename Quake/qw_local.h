@@ -31,6 +31,7 @@ Everything here is compiled only when USE_QW_PROTOCOL is defined.
 #define	QW_A2A_NACK		'm'
 #define	QW_A2A_ECHO		'e'
 #define	QW_A2C_PRINT		'n'
+#define	QW_M2C_MASTER_REPLY	'd'	// master's server-list reply, then 6-byte records
 #define	QW_S2M_HEARTBEAT	'a'
 #define	QW_A2C_CLIENT_COMMAND	'B'
 #define	QW_S2M_SHUTDOWN		'C'
@@ -377,6 +378,14 @@ void	CLQW_CalcPredictionError (const vec3_t predicted, const vec3_t server);
 void	CLQW_Init (void);				// one-time QW client init (from CL_Init)
 void	CLQW_EstablishConnection (const char *host);	// connectionless handshake start
 void	CLQW_Disconnect (void);				// tear down the QW connection
+qboolean CLQW_IsIdle (void);				// no QW connection in progress
+
+// Master server browser (qw_cl_slist.c). The server list itself lives in qw_net.h
+// with qw_netadr_t (declared before this header); these entry points don't need it.
+extern int	qw_numservers;
+void	CLQW_SList_Init (void);		// register slist command + qw_master cvar
+void	CLQW_SList_Poll (void);		// drain the master reply (called each frame)
+void	CLQW_SList_Query (const char *master);	// send the list request
 void	CLQW_RunConnection (void);			// per-frame pump (from Host_Frame)
 void	CLQW_ParseServerMessage (void);			// parse a netchan message (qw_cl_parse.c)
 qboolean CLQW_IsConnected (void);			// netchan established?

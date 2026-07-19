@@ -133,6 +133,11 @@ qboolean QWNET_GetPacket (void)
 	return true;
 }
 
+void QWNET_SetPort (qw_netadr_t *a, int port)
+{
+	a->port = htons ((unsigned short)port);
+}
+
 void QWNET_SendPacket (int length, const void *data, qw_netadr_t to)
 {
 	struct qsockaddr	addr;

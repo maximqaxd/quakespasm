@@ -46,6 +46,13 @@ qboolean CLQW_IsConnected (void)
 	return qw_connstate == QWCS_CONNECTED;
 }
 
+// True when no QW connection is in progress -- the server browser only polls the
+// socket then, so it never competes with the in-game netchan for packets.
+qboolean CLQW_IsIdle (void)
+{
+	return qw_connstate == QWCS_IDLE;
+}
+
 #define	QW_RETRY_TIME	5.0	// seconds between handshake retransmits
 
 /*
@@ -367,6 +374,7 @@ void CLQW_Init (void)
 	QWNET_Init ();
 	QWNetchan_Init ();
 	CLQW_InitPrediction ();
+	CLQW_SList_Init ();
 	Cvar_RegisterVariable (&qw_rate);
 	Cmd_AddCommand ("fullserverinfo", CLQW_FullServerinfo_f);
 	Cmd_AddCommand ("packet", CLQW_Packet_f);

@@ -776,6 +776,8 @@ void _Host_Frame (float time)
 //-------------------
 
 #if defined(USE_QW_PROTOCOL)
+	CLQW_SList_Poll ();	// drain a pending master-server list reply (menu/idle)
+
 	if (cls.protofamily == PROTO_QW)
 	{
 	// QuakeWorld drives its own connectionless handshake + netchan pump and
