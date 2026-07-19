@@ -313,7 +313,7 @@ typedef struct
 	qw_entity_state_t	entities[QW_MAX_PACKET_ENTITIES];
 } qw_packet_entities_t;
 
-extern qw_entity_state_t	qw_baselines[QW_MAX_EDICTS];
+extern qw_entity_state_t	*qw_baselines;	// [QW_MAX_EDICTS], hunk-allocated
 
 // Other players are delivered as playerinfo, not packet entities; keep the last
 // state per slot for rendering (our own slot is driven by prediction instead).

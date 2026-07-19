@@ -21,7 +21,7 @@ their previous state.
 #include "qw_local.h"
 #include "qw_net.h"
 
-qw_entity_state_t	qw_baselines[QW_MAX_EDICTS];
+qw_entity_state_t	*qw_baselines;		// [QW_MAX_EDICTS]
 qw_player_render_t	qw_players[QW_MAX_CLIENTS];
 int			qw_parsecount;
 
@@ -36,8 +36,9 @@ static int		qw_translate_model[QW_MAX_CLIENTS];
 static int		qw_translate_skin[QW_MAX_CLIENTS];
 
 // Snapshot ring keyed by the server packet sequence, so a delta can copy any of
-// the recently received frames forward.
-static qw_packet_entities_t	qw_snapshots[QW_UPDATE_BACKUP];
+// the recently received frames forward. Hunk-allocated (~208 KB) rather than
+// living in BSS -- see CLQW_ClearEntities.
+static qw_packet_entities_t	*qw_snapshots;	// [QW_UPDATE_BACKUP]
 static int			qw_snap_seq;	// sequence of the newest snapshot
 static qboolean			qw_have_snap;	// a full frame is available to link
 
@@ -66,8 +67,14 @@ CLQW_ClearEntities -- wipe the snapshot/baseline/player state at level change.
 */
 void CLQW_ClearEntities (void)
 {
-	memset (qw_baselines, 0, sizeof(qw_baselines));
-	memset (qw_snapshots, 0, sizeof(qw_snapshots));
+	// The snapshot ring (~208 KB) and baselines (~26 KB) are the port's biggest
+	// buffers. Rather than sit in always-resident BSS, allocate them from the
+	// hunk here -- this runs from serverdata parsing, right after CL_ClearState
+	// wiped the hunk, so they cost nothing outside QuakeWorld and are reclaimed
+	// on the next level change. Hunk_AllocName zeroes, so no memset is needed.
+	qw_baselines = (qw_entity_state_t *) Hunk_AllocName (QW_MAX_EDICTS * sizeof(*qw_baselines), "qwbaseline");
+	qw_snapshots = (qw_packet_entities_t *) Hunk_AllocName (QW_UPDATE_BACKUP * sizeof(*qw_snapshots), "qwsnapshot");
+
 	memset (qw_players, 0, sizeof(qw_players));
 	qw_have_snap = false;
 	qw_snap_seq = 0;
