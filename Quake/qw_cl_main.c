@@ -32,6 +32,12 @@ typedef enum
 
 static qwconnstate_t	qw_connstate = QWCS_IDLE;
 
+// True once the netchan is up, so command forwarding can write to it.
+qboolean CLQW_IsConnected (void)
+{
+	return qw_connstate == QWCS_CONNECTED;
+}
+
 #define	QW_RETRY_TIME	5.0	// seconds between handshake retransmits
 
 /*

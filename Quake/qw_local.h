@@ -171,6 +171,8 @@ typedef struct
 	qboolean	spectator;
 	char		gamedir[64];	// server's gamedir
 	char		levelname[40];	// full level name for the console/scoreboard
+	int		num_models;	// running precache counts (filled from svc_modellist/soundlist)
+	int		num_sounds;
 } qwcl_state_t;
 
 extern qwcl_state_t	qwcl;
@@ -180,6 +182,7 @@ void	CLQW_Init (void);				// one-time QW client init (from CL_Init)
 void	CLQW_EstablishConnection (const char *host);	// connectionless handshake start
 void	CLQW_RunConnection (void);			// per-frame pump (from Host_Frame)
 void	CLQW_ParseServerMessage (void);			// parse a netchan message (qw_cl_parse.c)
+qboolean CLQW_IsConnected (void);			// netchan established?
 
 #endif	/* USE_QW_PROTOCOL */
 

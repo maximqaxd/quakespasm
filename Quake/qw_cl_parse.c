@@ -77,6 +77,99 @@ static void CLQW_ParseServerData (void)
 
 /*
 ==============
+CLQW_ParseSoundlist -- svc_soundlist: a chunk of sound names. Precache each; if
+more chunks remain request the next, else move on to the model list.
+==============
+*/
+static void CLQW_ParseSoundlist (void)
+{
+	const char	*str;
+	int		numsounds, n;
+
+	numsounds = MSG_ReadByte ();	// index the server is starting this chunk from
+	for (;;)
+	{
+		str = MSG_ReadString ();
+		if (!str[0])
+			break;
+		if (++numsounds >= MAX_SOUNDS)
+		{
+			Con_Printf ("[QW] too many sounds\n");
+			CL_Disconnect ();
+			return;
+		}
+		cl.sound_precache[numsounds] = S_PrecacheSound (str);
+	}
+	qwcl.num_sounds = numsounds;
+
+	n = MSG_ReadByte ();
+	if (n)		// more chunks
+	{
+		MSG_WriteByte (&cls.netchan.message, qwclc_stringcmd);
+		MSG_WriteString (&cls.netchan.message, va("soundlist %i %i", qwcl.servercount, n));
+		return;
+	}
+
+	// sounds done -> request the model list
+	MSG_WriteByte (&cls.netchan.message, qwclc_stringcmd);
+	MSG_WriteString (&cls.netchan.message, va("modellist %i 0", qwcl.servercount));
+}
+
+/*
+==============
+CLQW_ParseModellist -- svc_modellist: a chunk of model names. model_precache[1]
+is the world. When the last chunk arrives, load the map and ask to prespawn.
+==============
+*/
+static void CLQW_ParseModellist (void)
+{
+	const char	*str;
+	int		nummodels, n;
+
+	nummodels = MSG_ReadByte ();
+	for (;;)
+	{
+		str = MSG_ReadString ();
+		if (!str[0])
+			break;
+		if (++nummodels >= MAX_MODELS)
+		{
+			Con_Printf ("[QW] too many models\n");
+			CL_Disconnect ();
+			return;
+		}
+		cl.model_precache[nummodels] = Mod_ForName (str, false);
+		if (!cl.model_precache[nummodels])
+			Con_Printf ("[QW] missing model \"%s\"\n", str);
+	}
+	qwcl.num_models = nummodels;
+
+	n = MSG_ReadByte ();
+	if (n)		// more chunks
+	{
+		MSG_WriteByte (&cls.netchan.message, qwclc_stringcmd);
+		MSG_WriteString (&cls.netchan.message, va("modellist %i %i", qwcl.servercount, n));
+		return;
+	}
+
+	// models done -> bring up the world
+	cl.worldmodel = cl.model_precache[1];
+	if (!cl.worldmodel)
+	{
+		Con_Printf ("[QW] worldmodel not found -- map data missing on the client\n");
+		CL_Disconnect ();
+		return;
+	}
+	R_NewMap ();
+	Con_Printf ("[QW] map loaded: %s\n", cl.worldmodel->name);
+
+	// prespawn (checksum 0 for now; some servers validate it -- phase 2c)
+	MSG_WriteByte (&cls.netchan.message, qwclc_stringcmd);
+	MSG_WriteString (&cls.netchan.message, va("prespawn %i 0 0", qwcl.servercount));
+}
+
+/*
+==============
 CLQW_ParseServerMessage -- decode one netchan message worth of svc_ commands
 ==============
 */
@@ -127,6 +220,14 @@ void CLQW_ParseServerMessage (void)
 
 		case qwsvc_serverdata:
 			CLQW_ParseServerData ();
+			break;
+
+		case qwsvc_soundlist:
+			CLQW_ParseSoundlist ();
+			break;
+
+		case qwsvc_modellist:
+			CLQW_ParseModellist ();
 			break;
 
 		case qwsvc_setangle:

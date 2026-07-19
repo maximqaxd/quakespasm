@@ -830,6 +830,28 @@ Sends the entire command line over to the server
 */
 void Cmd_ForwardToServer (void)
 {
+#if defined(USE_QW_PROTOCOL)
+	if (cls.protofamily == PROTO_QW)
+	{	// QuakeWorld forwards stringcmds over the netchan, not the NQ qsocket
+		if (!CLQW_IsConnected ())
+		{
+			Con_Printf ("Can't \"%s\", not connected\n", Cmd_Argv(0));
+			return;
+		}
+		MSG_WriteByte (&cls.netchan.message, qwclc_stringcmd);
+		if (q_strcasecmp (Cmd_Argv(0), "cmd") != 0)
+		{
+			SZ_Print (&cls.netchan.message, Cmd_Argv(0));
+			SZ_Print (&cls.netchan.message, " ");
+		}
+		if (Cmd_Argc() > 1)
+			SZ_Print (&cls.netchan.message, Cmd_Args());
+		else
+			SZ_Print (&cls.netchan.message, "\n");
+		return;
+	}
+#endif
+
 	if (cls.state != ca_connected)
 	{
 		Con_Printf ("Can't \"%s\", not connected\n", Cmd_Argv(0));
