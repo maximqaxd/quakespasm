@@ -232,6 +232,14 @@ static void PVR_EmitQuad (gltexture_t *tex, int env, int bsrc, int bdst,
 	ax0 = x0 * c_sx + c_tx;  ay0 = y0 * c_sy + c_ty;
 	ax1 = x1 * c_sx + c_tx;  ay1 = y1 * c_sy + c_ty;
 
+	// On real hardware the strip's two triangles don't quite meet along their
+	// shared diagonal (a sub-pixel gap that reads as diagonal tearing); growing the
+	// bottom-right corner by a pixel overlaps the seam and closes it. Applied to
+	// every quad -- gating it to large quads let text tear again, so accept the
+	// slightly bolder glyphs as the cost of a clean 2D across the board.
+	ax1 += 1.0f;
+	ay1 += 1.0f;
+
 	v = &batch_v[batch_n];
 	// triangle strip: TL, TR, BL, BR
 	v[0].flags = PVR_CMD_VERTEX;     v[0].x = ax0; v[0].y = ay0; v[0].z = 1.0f; v[0].u = s0; v[0].v = t0; v[0].argb = argb; v[0].oargb = 0;
