@@ -786,6 +786,16 @@ void SCR_SetUpToDrawConsole (void)
 // decide on the height of the console
 	con_forcedup = !cl.worldmodel || cls.signon != SIGNONS;
 
+#if defined(USE_QW_PROTOCOL)
+	// QW marks signon complete at prespawn (once the map is up) so the world can
+	// load, but the player hasn't spawned yet -- there's no position or view angle
+	// until the first player frame arrives. Rendering the game then shows a
+	// null-angle view at the origin; hold the console up until that first frame,
+	// like the reference client waits for ca_active.
+	if (cls.protofamily == PROTO_QW && !qw_validsequence)
+		con_forcedup = true;
+#endif
+
 	if (con_forcedup)
 	{
 		scr_conlines = glheight; //full screen //johnfitz -- glheight instead of vid.height

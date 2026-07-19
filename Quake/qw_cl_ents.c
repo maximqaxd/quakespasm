@@ -95,6 +95,7 @@ void CLQW_ClearEntities (void)
 	memset (qw_players, 0, sizeof(qw_players));
 	qw_have_snap = false;
 	qw_snap_seq = 0;
+	qw_validsequence = 0;		// re-arm the "wait for first player frame" view gate
 	qw_parsecount = 0;
 	qw_playerindex = qw_spikeindex = qw_flagindex = -1;
 	memset (qw_translate_model, -1, sizeof(qw_translate_model));
