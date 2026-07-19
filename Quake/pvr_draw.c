@@ -1,6 +1,6 @@
 /*
 ================================================================================
-pvr_draw.c -- 2D drawing (HUD / menu / console) for the native PVR renderer (maximqad)
+pvr_draw.c -- 2D drawing (HUD / menu / console) for the native PVR renderer
 
 REPLACES gl_draw.c when USE_PVR_RENDER is set (the Makefile swaps the object).
 
@@ -9,18 +9,18 @@ through TexMgr) and is kept verbatim. Only the actual submission changes: instea
 of GLdc immediate mode + glOrtho canvases, 2D quads are mapped to screen pixels by
 a per-canvas affine transform (derived from the same glOrtho+glViewport math).
 
-2D goes in the PUNCH-THROUGH list (PVR_LIST_PT_POLY), like xash3d_dc: PT renders in
-submission order (no autosort) yet still blends, so painter ordering is exact and
-depth is forced ALWAYS-pass / no-write. Quads are BATCHED into a RAM array and
+2D goes in the PUNCH-THROUGH list (PVR_LIST_PT_POLY): PT renders in submission
+order (no autosort) yet still blends, so painter ordering is exact and depth is
+forced ALWAYS-pass / no-write. Quads are BATCHED into a RAM array and
 flushed (one poly header + all verts, fired through the store queues) whenever the
 texture/blend/env state changes or at end of frame -- so a whole console line or
 status bar is one header, not one per glyph. Cutouts (conchars, HUD pics) come from
 the palette alpha (index 255/0 -> 0) blended SRC_ALPHA/INV_SRC_ALPHA; solid
 fills/fades from the vertex color alpha; opaque tiles use REPLACE + ONE/ZERO.
 
-The framebuffer swap is KOS's: PVR_BeginFrame does pvr_wait_ready + pvr_scene_begin,
-PVR_EndFrame does pvr_list_finish + pvr_scene_finish (double-buffered via the
-numpages passed to pvr_init). PVR_Flush2D is called from GL_EndRendering so the
+The framebuffer swap goes through the PVR API: PVR_BeginFrame does pvr_wait_ready
++ pvr_scene_begin, PVR_EndFrame does pvr_list_finish + pvr_scene_finish (double-
+buffered via the numpages passed to pvr_init). PVR_Flush2D is called from GL_EndRendering so the
 final batch reaches the TA before the scene closes.
 ================================================================================
 */

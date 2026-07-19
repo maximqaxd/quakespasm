@@ -1,14 +1,14 @@
 /*
 ================================================================================
 pvr_sprite.c -- world-space billboards (particles + sprite models) for the PVR
-renderer (maximqad)
+renderer
 
 Particles (r_part.c) and sprite-model entities (r_sprite.c) are both camera-
 facing textured quads in world space. The billboard geometry is built where the
 data lives (particle list / sprite frame), then handed here as four world-space
 corners + texcoords + a packed color. This module binds the texture, transforms
 the corners once through the XMTRX ftrv (the world MVP), near-plane clips, and
-submits two triangles via the shared clipper -- no GLdc, no main-RAM vertex list.
+submits two triangles via the shared clipper -- no main-RAM vertex list.
 
 Both go in blended lists (no depth write for particles): particles in TR (they
 never occlude), sprites in PT so their alpha-tested edges cut cleanly and sit

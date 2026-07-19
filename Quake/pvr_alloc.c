@@ -1,13 +1,11 @@
 /*
 ================================================================================
-pvr_alloc.c -- VRAM texture allocator for the PVR renderer (maximqad)
+pvr_alloc.c -- VRAM texture allocator for the PVR renderer
 
-The PVR samples textures from VRAM (pvr_mem). This owns a simple allocator over
-pvr_mem_malloc/free so gltexture_t can hold a pvr_ptr_t. 8MB VRAM is the budget;
-paletted 8bpp (revisit) would halve it. Ported concept from ref_pvr pvr_alloc.
-
-Fill status: STUB. Start with plain pvr_mem_malloc/free; add packing/eviction
-only if VRAM fragmentation bites.
+The PVR samples textures from VRAM (pvr_mem). This is a thin allocator over
+pvr_mem_malloc/free so gltexture_t can hold a pvr_ptr_t. The budget is 8MB of
+VRAM. A packing/eviction allocator can be added here if fragmentation ever
+becomes a problem.
 ================================================================================
 */
 #include "pvr_local.h"
@@ -16,9 +14,9 @@ only if VRAM fragmentation bites.
 
 void PVR_TexAlloc_Init (void)
 {
-	// Nothing to reserve for plain pvr_mem_malloc. When VRAM fragmentation bites
-	// (many small brush/model textures churned on map change) this is where a
-	// packing/defrag allocator would live -- see ref_pvr pvr_alloc.c.
+	// Nothing to reserve for plain pvr_mem_malloc. If VRAM fragmentation ever
+	// becomes an issue (many small brush/model textures churned on map change),
+	// a packing/defrag allocator would live here.
 }
 
 /*

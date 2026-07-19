@@ -308,7 +308,7 @@ static void SCR_CalcRefdef (void)
 	size = scr_viewsize.value;
 	scale = CLAMP (1.0f, scr_sbarscale.value, (float)glwidth / 320.0f);
 
-	if (size >= 120 || cl.intermission || scr_sbaralpha.value < 1 || scr_hudstyle.value) //johnfitz -- scr_sbaralpha.value; maximqad -- overlay HUD
+	if (size >= 120 || cl.intermission || scr_sbaralpha.value < 1 || scr_hudstyle.value) //johnfitz -- scr_sbaralpha.value; DC -- overlay HUD
 		sb_lines = 0;
 	else if (size >= 110)
 		sb_lines = 24 * scale;

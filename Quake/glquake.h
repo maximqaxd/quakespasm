@@ -307,7 +307,7 @@ extern overflowtimes_t dev_overflows; //this stores the last time overflow messa
 extern int gl_lightmap_format, lightmap_bytes;
 
 #if defined(PLATFORM_DREAMCAST)
-#define LMBLOCK_WIDTH	128	// maximqad: was 256
+#define LMBLOCK_WIDTH	128	// DC: reduced from 256
 #define LMBLOCK_HEIGHT	128
 #else
 #define LMBLOCK_WIDTH	256	//FIXME: make dynamic. if we have a decent card there's no real reason not to use 4k or 16k (assuming there's no lightstyles/dynamics that need uploading...)

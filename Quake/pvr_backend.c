@@ -1,12 +1,9 @@
 /*
 ================================================================================
-pvr_backend.c -- PVR frame/list driver (maximqad)
+pvr_backend.c -- PVR frame/list driver
 
-Owns the KOS PVR init and the per-frame scene structure. Replaces GLdc's
-init + the SDL_GL swap in gl_vidsdl.c. See pvr_local.h for the big picture.
-
-Fill status: STEP 1 skeleton. init + clear-screen swap should light up first;
-list open/close is wired so the render modules can start submitting via pvr_dr.
+Owns the PVR init and the per-frame scene structure, replacing GLdc's init and
+the SDL_GL swap in gl_vidsdl.c. See pvr_local.h for the big picture.
 ================================================================================
 */
 #include <dc/video.h>
@@ -21,12 +18,11 @@ static unsigned	pvr_lists_done;		// bitmask of lists already finished this frame
 static qboolean	pvr_inited;
 static float	pvr_clear[3] = { 0.0f, 0.0f, 0.0f };
 
-// Proven config lifted from xash3d_dc (engine/platform/dreamcast/vid_dc.c):
-// small 8-word OPBs, a small TA vertex buffer (lives in VRAM, not main RAM --
-// this is the whole point vs GLdc), autosort enabled (PVR sorts the TR list),
-// and 2 OPB-overflow sets to avoid tile-boundary flicker on heavy scenes.
+// PVR TA config: small 8-word OPBs, a small TA vertex buffer (in VRAM, not main
+// RAM -- the whole point over GLdc), autosort enabled so the PVR sorts the TR
+// list, and 2 OPB-overflow sets to avoid tile-boundary flicker on heavy scenes.
 // Kept lean so full-res (gl_picmip 0) textures fit the 8MB VRAM: all bins 8-word,
-// 768KB vertex buffer. Bump these back up if dense scenes drop polys / flicker.
+// 768KB vertex buffer. Bump these up if dense scenes drop polys or flicker.
 static pvr_init_params_t pvr_params =
 {
 	/* opb_sizes: OP, OP-mod, TR, TR-mod, PT */
@@ -40,10 +36,10 @@ static pvr_init_params_t pvr_params =
 
 /*
 ==============
-PVR_Backend_Init -- KOS-native display + PVR init (no SDL video)
+PVR_Backend_Init -- native display + PVR init (no SDL video)
 
-Cable-aware 640x480 RGB565, then pvr_init. Mirrors xash3d_dc's VID_SetMode +
-R_Init_Video. The engine no longer needs SDL_INIT_VIDEO.
+Cable-aware 640x480 RGB565, then pvr_init. The engine no longer needs
+SDL_INIT_VIDEO.
 ==============
 */
 void PVR_Backend_Init (void)

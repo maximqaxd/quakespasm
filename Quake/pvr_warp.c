@@ -1,16 +1,14 @@
 /*
 ================================================================================
-pvr_warp.c -- warped liquid (and later sky) surfaces for the PVR renderer (maximqad)
+pvr_warp.c -- warped liquid and sky surfaces for the PVR renderer
 
 Water/lava/slime faces are flagged SURF_DRAWTURB and subdivided at load into a
 chain of small polys (GL_SubdivideSurface). They're drawn with an animated sine
 warp of the texture coordinates (the classic Quake turb effect) -- the geometry is
 static, only the u/v scroll. This mirrors gl_warp.c's r_oldwater DrawWaterPoly
 path, but emits through pvr_rsurf's shared transform/clip/strip core (PVR_EmitPoly)
-instead of glBegin.
-
-Fill status: STEP 6. Opaque fullbright liquid in the OP list. Water alpha
-(translucent, TR list) and sky are still TODO.
+instead of glBegin. Sky is drawn here too: fast flat-color, scrolling two-layer,
+or a six-face skybox.
 ================================================================================
 */
 #include "pvr_local.h"
@@ -136,7 +134,7 @@ void PVR_DrawWorld_Water (qmodel_t *model)
 	PVR_DrawWaterChains (model, chain_world, true);
 }
 
-// Brush-model entity liquid (opaque only for now; XMTRX holds the entity transform).
+// Brush-model entity liquid (opaque; XMTRX holds the entity transform).
 void PVR_DrawBrushModel_Water (qmodel_t *model)
 {
 	PVR_DrawWaterChains (model, chain_model, false);

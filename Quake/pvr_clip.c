@@ -1,10 +1,10 @@
 /*
 ================================================================================
-pvr_clip.c -- near-plane clipping for PVR direct rendering (maximqad)
+pvr_clip.c -- near-plane clipping for PVR direct rendering
 
-Ported from xash3d_dc ref/pvr. The PVR has no near-plane clipper; vertices behind
-the eye (w <= 0) blow up under the 1/w perspective divide and hang the TA (hard
-reboot). With shz_xmtrx_apply_perspective the projection gives clip.w = -z_eye
+The PVR has no near-plane clipper; vertices behind the eye (w <= 0) blow up under
+the 1/w perspective divide and hang the TA (hard reboot). With
+shz_xmtrx_apply_perspective the projection gives clip.w = -z_eye
 (distance) and clip.z = near, so a vertex is in front of the near plane when
 w >= z. We test each triangle's 3 verts, fast-path fully-visible ones, drop fully-
 behind ones, and clip the straddling ones in clip space (interpolating position,

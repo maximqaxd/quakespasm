@@ -1,6 +1,6 @@
 /*
 ================================================================================
-pl_vmu.c -- Dreamcast VMU save-game layer (maximqad)
+pl_vmu.c -- Dreamcast VMU save-game layer
 
 The CD (/cd/id1) is read-only, so QuakeSpasm's savegames go to the VMU instead.
 A save is written by the normal code to a temp file on the KOS ramdisk (/ram),
@@ -15,7 +15,7 @@ header is stripped). So we do NOT call vmu_pkg_build/parse ourselves.
 Compression is zlib (kos-ports); the bundled miniz has deflate disabled. The
 payload carries an uncompressed prefix (magic + size + the savegame comment) so
 the load/save menu can list slots without inflating each file. The BIOS long-
-description is the map name; the icon is the Quake logo (from nuquake_enhanced).
+description is the map name; the icon is a 32x32 Quake logo.
 ================================================================================
 */
 #include <kos/fs.h>
@@ -60,7 +60,7 @@ static int DC_VMU_SlotIndex (const char *save)
 	return n;
 }
 
-// Quake logo icon (32x32 4bpp) + ARGB4444 palette -- from nuquake_enhanced.
+// Quake logo icon (32x32 4bpp) + ARGB4444 palette for the VMU BIOS listing.
 static const uint16_t quake_icon_pal[16] =
 {
 	0xF000,0xFE91,0xF850,0xF999,0xF555,0xF530,0xFFFD,0xFFA8,

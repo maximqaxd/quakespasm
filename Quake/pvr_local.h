@@ -1,24 +1,20 @@
 /*
 ================================================================================
-pvr_local.h -- native Dreamcast PVR renderer for QuakeSpasm (maximqad)
+pvr_local.h -- native Dreamcast PVR renderer for QuakeSpasm
 
-WHY THIS EXISTS
----------------
-GLdc accumulates the whole frame's OP/PT/TR vertex lists in main-RAM vectors that
-grow to high-water mark and never shrink. On the big DOTM maps that balloons past
-the 16MB budget and starves the Quake hunk (model-Cache thrash) -- the OOM/lag we
-could never fully tune away. xash3d_dc's ref/pvr proves the fix: submit geometry
-straight to the PVR Tile Accelerator via the store queues (pvr_dr_*), transform-
-and-fire per small batch, nothing accumulated. Render RAM drops to a fixed few
-hundred KB and the hunk/pool tug-of-war disappears.
+Replaces GLdc on the Dreamcast. GLdc accumulates the whole frame's OP/PT/TR
+vertex lists in main-RAM vectors that grow to a high-water mark and never
+shrink; on large maps that overruns the 16MB budget and starves the Quake hunk.
+Instead, this renderer submits geometry straight to the PVR Tile Accelerator
+through the store queues (pvr_dr_*), transforming and firing one small batch at
+a time. Render RAM stays at a fixed few hundred KB.
 
-This renderer REPLACES GLdc for the DC. It reuses QuakeSpasm's high-level render
-logic (PVS, culling, texture chains, alias lerp -- all the gl_ and r_ smarts) but
-swaps the low-level GL submission for direct PVR. Built only when USE_PVR_RENDER
-is defined; otherwise the GLdc path is unchanged.
+The high-level render logic (PVS, culling, texture chains, alias lerp -- the gl_
+and r_ modules) is reused unchanged; only the low-level GL submission is swapped
+for direct PVR. Built only when USE_PVR_RENDER is defined; otherwise the GLdc
+path is untouched.
 
-FRAME MODEL (mirrors KOS/ref_pvr)
----------------------------------
+Frame model:
   PVR_BeginFrame()                      // pvr_scene_begin()
     PVR_ListBegin(PVR_LIST_OP_POLY)     //   opaque: world base, alias, sprites
       ... submit surfaces/models ...    //   pvr_dr_target/commit per vertex
@@ -26,37 +22,26 @@ FRAME MODEL (mirrors KOS/ref_pvr)
       ...
     PVR_ListBegin(PVR_LIST_TR_POLY)     //   translucent: lightmap pass, water, 2D
       ...
-  PVR_EndFrame()                        // pvr_scene_finish()  (submits + waits + swaps)
+  PVR_EndFrame()                        // pvr_scene_finish() (submits, waits, swaps)
 
-Lists are auto-sorted (TR) by the PVR; nothing is held in main RAM between draws.
+The PVR auto-sorts the TR list; nothing is held in main RAM between draws.
 
-MODULE MAP (pvr_ .c  <-  ported-from QuakeSpasm gl_ / r_)
---------------------------------------------------------
-  pvr_backend.c   frame/list driver, clear color, r_speeds   <- gl_vidsdl GL_Begin/EndRendering
-  pvr_rmath.c     matrix stack + sh4zam xmtrx transform + 1/w <- gl_rmain R_SetupGL matrices
-  pvr_context.c   poly-context cache (blend/txr/list -> hdr)  <- (new; ref_pvr pvr_context)
-  pvr_alloc.c     VRAM texture allocator                      <- (new; ref_pvr pvr_alloc)
-  pvr_image.c     texture upload (twiddle, RGB565, paletted)  <- gl_texmgr upload path
-  pvr_clip.c      near-Z primitive clipping                   <- (new; ref_pvr pvr_clip)
-  pvr_rmain.c     scene orchestration (R_RenderScene glue)    <- gl_rmain
-  pvr_rsurf.c     world + brush surfaces, lightmaps           <- r_world + r_brush
-  pvr_ralias.c    alias models (mdl)                          <- r_alias + gl_mesh
-  pvr_rsprite.c   sprites                                     <- r_sprite
-  pvr_rpart.c     particles                                   <- r_part
-  pvr_warp.c      water + sky                                 <- gl_warp + gl_sky
-  pvr_draw.c      2D: HUD / menu / console                    <- gl_draw + gl_screen(2D)
-
-FILL ORDER (each step independently testable on hardware)
----------------------------------------------------------
-  1. backend + rmath: init PVR, clear-screen swap, one test tri via pvr_dr.  <-- start here
-  2. image + alloc: upload one texture, draw a textured quad.
-  3. draw (2D): get the console/HUD on screen (proves PT/TR + text).
-  4. rsurf base pass: world opaque, no lighting.
-  5. rmath lightmaps + rsurf pass 2: per-pixel lighting.
-  6. ralias: monsters. 7. rpart/rsprite. 8. warp (water/sky). 9. clip polish.
+Module map (each pvr_ file backs the matching gl_/r_ logic):
+  pvr_backend.c   frame/list driver, clear color, r_speeds
+  pvr_rmath.c     matrix stack, xmtrx transform, 1/w depth
+  pvr_context.c   poly-context cache (blend/txr/list -> header)
+  pvr_alloc.c     VRAM texture allocator
+  pvr_image.c     texture upload (twiddle, RGB565, paletted)
+  pvr_clip.c      near-Z primitive clipping
+  pvr_rmain.c     scene orchestration (R_RenderScene glue)
+  pvr_rsurf.c     world + brush surfaces, lightmaps
+  pvr_alias.c     alias models (.mdl)
+  pvr_sprite.c    sprites
+  pvr_warp.c      water + sky
+  pvr_draw.c      2D: HUD / menu / console
 
 Math is sh4zam throughout (shz_xmtrx_* for the hot transform, shz_mat4x4_* for
-matrix build). Vertices are fired as KOS pvr_vertex_t straight into the SQ.
+matrix build). Vertices are fired as pvr_vertex_t straight into the store queue.
 ================================================================================
 */
 #ifndef PVR_LOCAL_H
@@ -141,7 +126,7 @@ void	PVR_SetViewport (int x, int y, int w, int h);
 struct gltexture_s;
 void	PVR_TexAlloc_Init (void);
 
-// VRAM allocator (pvr_alloc.c) -- thin wrappers over pvr_mem_malloc/free for now.
+// VRAM allocator (pvr_alloc.c) -- thin wrappers over pvr_mem_malloc/free.
 void   *PVR_VramAlloc (unsigned bytes);		// returns pvr_ptr_t (NULL on OOM)
 void	PVR_VramFree (void *ptr);
 

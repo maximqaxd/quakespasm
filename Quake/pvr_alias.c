@@ -1,6 +1,6 @@
 /*
 ================================================================================
-pvr_alias.c -- alias (.mdl) model vertex submission for the PVR renderer (maximqad)
+pvr_alias.c -- alias (.mdl) model vertex submission for the PVR renderer
 
 The renderer-agnostic half stays in r_alias.c: pose/lerp selection
 (R_SetupAliasFrame), entity transform lerp (R_SetupEntityTransform), lighting
@@ -15,10 +15,10 @@ transformed ONCE through the XMTRX ftrv (the win over per-triangle transforms),
 flagged against the near plane, then the indexed triangle list is walked: fully-
 visible tris fast-path straight to the TA store queue, straddling tris go through
 the shared near-plane clipper (pvr_clip). One texture header per model (a single
-PVR_FlushState), no GLdc, no main-RAM vertex list.
+PVR_FlushState), no main-RAM vertex list.
 
-Inspired by xash3d_dc's pvr_studio.c (HL studio models): transform the whole
-vertex pool up front, submit by index, minimize header switches.
+The whole vertex pool is transformed up front and submitted by index, which
+keeps texture-header switches to a minimum.
 ================================================================================
 */
 // pvr_local.h pulls <dc/pvr.h> before quakedef.h (HZ macro collision), so this

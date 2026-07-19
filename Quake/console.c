@@ -37,7 +37,7 @@ int 		con_linewidth;
 float		con_cursorspeed = 4;
 
 #if defined(PLATFORM_DREAMCAST)
-#define		CON_TEXTSIZE (128 * 1024) // maximqad was 1MB
+#define		CON_TEXTSIZE (128 * 1024) // DC: reduced from 1MB to save RAM
 #else
 #define		CON_TEXTSIZE (1024 * 1024) //ericw -- was 65536. johnfitz -- new default size
 #endif

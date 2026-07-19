@@ -1,15 +1,15 @@
 /*
 ================================================================================
-pvr_texmgr.c -- PVR-native texture manager for the native PVR renderer (maximqad)
+pvr_texmgr.c -- PVR-native texture manager for the native PVR renderer
 
-REPLACES gl_texmgr.c when USE_PVR_RENDER is set (the Makefile swaps the object).
+Replaces gl_texmgr.c when USE_PVR_RENDER is set (the Makefile swaps the object).
 
-This is a real port of fitzquake's texture manager, NOT a GL shim. It keeps all of
-QuakeSpasm's renderer-agnostic image work verbatim -- palette build, indexed->RGBA
-expansion, resample/mipmap/pad, colormap (shirt/pants) reloading, the active/free
-gltexture_t bookkeeping -- and swaps ONLY the low-level upload/bind/delete for the
-PVR: uploads go to VRAM via PVR_UploadTexture (pvr_image.c) and GL_Bind records the
-bound texture for the context cache instead of calling glBindTexture. No libGL.
+It keeps all of QuakeSpasm's renderer-agnostic image work verbatim -- palette
+build, indexed->RGBA expansion, resample/mipmap/pad, colormap (shirt/pants)
+reloading, the active/free gltexture_t bookkeeping -- and swaps only the low-level
+upload/bind/delete for the PVR: uploads go to VRAM via PVR_UploadTexture
+(pvr_image.c) and GL_Bind records the bound texture for the context cache instead
+of calling glBindTexture.
 
 A gltexture_t on DC carries a VRAM pointer (pvr_vram) + PVR_TXRFMT_* (pvr_fmt); the
 GL "texnum" is kept only as a cheap identity for GL_Bind's redundant-bind filter.

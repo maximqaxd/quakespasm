@@ -1,19 +1,18 @@
 /*
  * gl_pvr_types.h -- minimal GL type/token/prototype shim for the native PVR
- * renderer (maximqad).
+ * renderer.
  *
  * The USE_PVR_RENDER build no longer links or includes GLdc: <GL/gl.h>,
- * <GL/glext.h> and <GL/glkos.h> are gone. But the engine's still-compiled
- * gl_*.c / r_*.c render modules (and glquake.h) reference GL base types
- * (GLuint, GLenum, ...), a pile of GL_* enum tokens, and a set of gl* entry
- * points. This header supplies exactly those, and nothing else -- the gl*
- * entry points resolve at link time to the no-op stubs in pvr_glstub.c until
- * each path is ported to a pvr_ module and drops off the list.
+ * <GL/glext.h> and <GL/glkos.h> are gone. The still-compiled gl_*.c / r_*.c
+ * render modules (and glquake.h) still reference GL base types (GLuint, GLenum,
+ * ...), a pile of GL_* enum tokens, and a set of gl* entry points. This header
+ * supplies exactly those and nothing else; the gl* entry points resolve at link
+ * time to the no-op stubs in pvr_glstub.c.
  *
- * Values match desktop OpenGL where a real value exists; the handful of GLdc
- * "KOS" internal-format tokens get locally-unique values (their only use on the
- * PVR path is compile-time switch/case distinctness -- the code that consumed
- * them at runtime is a no-op stub here).
+ * Values match desktop OpenGL where a real value exists; the handful of extra
+ * internal-format tokens get locally-unique values (their only use on the PVR
+ * path is compile-time switch/case distinctness -- the code that consumed them
+ * at runtime is a no-op stub here).
  */
 #ifndef GL_PVR_TYPES_H
 #define GL_PVR_TYPES_H

@@ -47,7 +47,7 @@ static byte	*mod_decompressed;
 static int	mod_decompressed_capacity;
 
 #if defined(PLATFORM_DREAMCAST)
-#define	MAX_MOD_KNOWN	512 /* maximqad: was 4096 */
+#define	MAX_MOD_KNOWN	512 /* DC: reduced from 4096 */
 #else
 #define	MAX_MOD_KNOWN	4096 /*johnfitz -- was 512 */
 #endif
@@ -94,7 +94,7 @@ void Mod_Init (void)
 /*
 ================================================================================
 
-	DC_MHeap -- maximqad -- dedicated alias-model heap
+	DC_MHeap -- dedicated alias-model heap
 
 	Alias models are built on the hunk (transient) and then copied here, a fixed
 	block allocated once per map. Keeping them out of Quake's Cache is the whole

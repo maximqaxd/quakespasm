@@ -1,19 +1,17 @@
 /*
 ================================================================================
-pvr_image.c -- texture upload to VRAM for the PVR renderer (maximqad)
+pvr_image.c -- texture upload to VRAM for the PVR renderer
 
 Converts QuakeSpasm's processed 32-bit RGBA (or already-565 lightmap) source into
 a PVR-native texture in VRAM and records the pvr_ptr_t + PVR_TXRFMT_* on the
 gltexture_t. Replaces the glTexImage2D path that gl_texmgr.c used; here the GL
 "name" is meaningless and the VRAM pointer/format is what the context cache samples.
 
-Non-twiddled linear textures (like ref_pvr's default path): the PVR samples
-rectangular non-twiddled textures directly, so we skip twiddle math entirely and
-just pack + pvr_txr_load. TexMgr pads every texture to a power of two >= 8, so
-w*h*2 is always a multiple of 32 (8*8*2 = 128) and needs no chunk padding.
-
-Fill status: STEP 2. Real 565/4444 pack + VRAM upload. Twiddle/VQ/mip can be added
-later if bandwidth or filtering quality needs it.
+Non-twiddled linear textures: the PVR samples rectangular non-twiddled textures
+directly, so the upload skips twiddle math entirely and just packs + pvr_txr_load.
+TexMgr pads every texture to a power of two >= 8, so w*h*2 is always a multiple of
+32 (8*8*2 = 128) and needs no chunk padding. (Square textures can opt into a
+twiddled mipmap chain -- see PVR_UploadTextureMipmap.)
 ================================================================================
 */
 #include "pvr_local.h"

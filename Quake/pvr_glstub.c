@@ -1,19 +1,16 @@
 /*
 ================================================================================
-pvr_glstub.c -- no-op GL stubs for the native PVR build (maximqad)
+pvr_glstub.c -- no-op GL stubs for the native PVR build
 
-De-GLfying: the native PVR renderer no longer links or includes GLdc. But
-several render paths that aren't ported yet (alias models, sprites, particles,
-sky, fog, screen-scale) are still compiled and reference gl* symbols. Rather
-than link GLdc -- whose entry points would crash if reached uninitialized -- we
-resolve those symbols here with harmless no-ops. Any not-yet-ported path that
-slips through simply draws nothing instead of hanging the TA.
+The native PVR renderer does not link or include GLdc. The renderer-agnostic
+gl_/r_ modules are still compiled, though, and their non-PVR code paths still
+reference gl* symbols the linker needs to resolve. Rather than link GLdc, those
+symbols are resolved here with harmless no-ops; any such path that is reached
+simply draws nothing instead of hanging the TA.
 
-The stubs are defined with the SAME prototypes the rest of the engine sees
-(gl_pvr_types.h), so LTO doesn't flag a type mismatch and the compiler checks
-the bodies against the declarations. As each path is ported to a pvr_ module
-and swapped out of the build, its symbols drop off this list; when the list is
-empty this file goes away.
+The stubs use the same prototypes the rest of the engine sees (gl_pvr_types.h),
+so LTO doesn't flag a type mismatch and the compiler checks the bodies against
+the declarations.
 ================================================================================
 */
 #if defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER)
@@ -104,12 +101,12 @@ void glVertex3fv (const GLfloat *v) {}
 void glVertexPointer (GLint size, GLenum type, GLsizei stride, const void *ptr) {}
 void glViewport (GLint x, GLint y, GLsizei w, GLsizei h) {}
 
-// --- glKos*: NOT used by our renderer -- pvr_backend owns PVR init/swap now.
+// --- glKos*: not used by this renderer -- pvr_backend owns PVR init/swap.
 // These exist solely to satisfy libSDL2's Dreamcast GL video backend
 // (SDL_dreamcastopengl.c), which the SDL video subsystem drags into the link
 // even though the PVR path never creates an SDL GL context. No-ops: never run.
-// (void)-typed on purpose: matching GLdc's GLdcConfig* would require pulling in
-// <GL/glkos.h>, which is exactly the header this de-GLfy removes.
+// (void)-typed on purpose: matching the real GLdcConfig* argument would require
+// pulling in <GL/glkos.h>, the header the PVR path deliberately avoids.
 void glKosInit (void) {}
 void glKosInitEx (void) {}
 void glKosInitConfig (void) {}

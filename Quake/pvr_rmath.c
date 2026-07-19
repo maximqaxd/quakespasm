@@ -1,16 +1,12 @@
 /*
 ================================================================================
-pvr_rmath.c -- matrices & vertex transform for the PVR renderer (maximqad)
+pvr_rmath.c -- matrices and vertex transform for the PVR renderer
 
 QuakeSpasm builds a GL projection (GL_SetFrustum) and a modelview (R_SetupGL,
-per-entity R_RotateForEntity). We keep both, combine to an MVP, and keep it in
+per-entity R_RotateForEntity). Both are kept, combined into an MVP, and held in
 the SH4 hardware matrix bank (xmtrx) via sh4zam so the per-vertex transform is a
 single ftrv. Screen mapping (viewport scale/bias, Y-flip, and z -> 1/w for the
 PVR's depth) is folded in here.
-
-Fill status: STEP 1 skeleton. Matrix plumbing + a straightforward transform;
-the screen/viewport constants and the exact z->1/w mapping are TODO and must be
-matched to pvr_backend's framebuffer + QuakeSpasm's depth range on hardware.
 ================================================================================
 */
 #include "pvr_local.h"
@@ -57,11 +53,9 @@ void PVR_UpdateMVP (void)
 PVR_TransformVertex
 
 pos (world/eye space) -> clip (via xmtrx) -> perspective divide -> screen px,
-with z carrying 1/w for the PVR depth compare.
-
-TODO(hw): confirm sign of Y flip and the exact depth term the PVR wants; ref_pvr
-submits z = 1/w and lets the TA sort. Guard-band / near-plane handling is done by
-pvr_clip before this for polys that cross the near plane.
+with z carrying 1/w for the PVR depth compare. The TA sorts on the submitted
+1/w. Guard-band / near-plane handling is done by pvr_clip before this for polys
+that cross the near plane.
 ==============
 */
 void PVR_TransformVertex (pvr_vertex_t *out, const float pos[3])

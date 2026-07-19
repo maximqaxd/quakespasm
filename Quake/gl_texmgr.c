@@ -38,7 +38,7 @@ static cvar_t	gl_picmip = {"gl_picmip", "0", CVAR_NONE};
 static GLint	gl_hardware_maxsize;
 
 #if defined(PLATFORM_DREAMCAST)
-#define	MAX_GLTEXTURES	1024	// maximqad: was 4096
+#define	MAX_GLTEXTURES	1024	// DC: reduced from 4096
 #else
 #define	MAX_GLTEXTURES	4096
 #endif

@@ -1,6 +1,6 @@
 /*
 ================================================================================
-pvr_context.c -- poly-context cache for the PVR renderer (maximqad)
+pvr_context.c -- poly-context cache for the PVR renderer
 
 The PVR wants a compiled poly header (pvr_poly_compile) whenever render state
 changes -- list, blend mode, texture, filter, tex-env. Recompiling/re-submitting
@@ -11,9 +11,6 @@ before the next vertex batch via PVR_FlushState.
 
 The bound texture comes from pvr_bound_texture (set by GL_Bind -> PVR_BindTexture
 in pvr_texmgr): its pvr_vram + pvr_fmt + flags feed the txr side of the context.
-
-Fill status: STEP 3. Real GL->PVR state mapping + header compile/submit. Depth,
-culling and list-dependent alpha use sane defaults the render modules can refine.
 ================================================================================
 */
 #include "pvr_local.h"
@@ -148,8 +145,9 @@ void PVR_FlushState (void)
 	cxt.depth.comparison = PVR_DEPTHCMP_GEQUAL;
 	cxt.depth.write = (list == PVR_LIST_TR_POLY) ? PVR_DEPTHWRITE_DISABLE : PVR_DEPTHWRITE_ENABLE;
 
-	// Winding is not yet normalized between Quake and the PVR; leave culling off
-	// until the surface/model submit paths settle their vertex order.
+	// Culling is disabled: Quake and PVR winding orders aren't normalized against
+	// each other, and the surface/model submit paths don't guarantee a consistent
+	// vertex order, so back-face culling can't be trusted here.
 	cxt.gen.culling = PVR_CULLING_NONE;
 
 	// Hardware table fog: the PVR blends toward the fog color per pixel from the

@@ -25,7 +25,7 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "quakedef.h"
 
 #if defined(PLATFORM_DREAMCAST)
-#include <shz_vector.h>	// maximqad -- SH4 SIMD vector lerp for the batched drawer
+#include <shz_vector.h>	// SH4 SIMD vector lerp for the batched drawer
 // Reused per-frame scratch for the DC indexed fast path (see GL_DrawAliasFrame).
 static float	dc_posbuf[MAXALIASVERTS*3];
 static float	dc_colbuf[MAXALIASVERTS*4];
@@ -998,7 +998,7 @@ cleanup:
 #if defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER)
 /*
 =================
-PVR_DrawAliasModel -- native PVR alias (.mdl) drawer (maximqad)
+PVR_DrawAliasModel -- native PVR alias (.mdl) drawer
 
 The renderer-agnostic setup (pose/lerp, entity transform, lighting, skin) is the
 same as R_DrawAliasModel; instead of the GL multipass we bake the entity+decode
@@ -1158,7 +1158,7 @@ void PVR_DrawAliasModel (entity_t *e, int passkind)
 
 /*
 =================
-PVR_DrawAliasShadow -- flattened blob shadow for an alias entity (maximqad)
+PVR_DrawAliasShadow -- flattened blob shadow for an alias entity
 
 The PVR analog of GL_DrawAliasShadow: project the model onto the floor with the
 shadow matrix (PVR_SetupAliasShadowMatrices) and submit its triangles as flat

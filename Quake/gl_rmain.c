@@ -92,7 +92,7 @@ cvar_t	gl_overbright = {"gl_overbright", "1", CVAR_ARCHIVE};
 cvar_t	gl_overbright = {"gl_overbright", "1", CVAR_ARCHIVE};
 #endif
 #if defined(PLATFORM_DREAMCAST)
-// maximqad -- 0 keeps R_DrawAliasModel on the single-pass batched drawer.
+// DC: 0 keeps R_DrawAliasModel on the single-pass batched drawer.
 cvar_t	gl_overbright_models = {"gl_overbright_models", "1", CVAR_ARCHIVE};
 #else
 cvar_t	gl_overbright_models = {"gl_overbright_models", "1", CVAR_ARCHIVE};

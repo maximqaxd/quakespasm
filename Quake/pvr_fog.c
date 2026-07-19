@@ -1,6 +1,6 @@
 /*
 ================================================================================
-pvr_fog.c -- hardware table fog for the native PVR renderer (maximqad)
+pvr_fog.c -- hardware table fog for the native PVR renderer
 
 Quake's fog (gl_fog.c) is GL_EXP2 with color + density from the map's worldspawn
 (and smoothly interpolated on fog changes). On the PVR we use the hardware's
@@ -9,10 +9,10 @@ from the vertex's 1/w -- exactly the depth we already submit -- so fog is free
 per vertex; only the poly header carries the enable (pvr_context sets
 gen.fog_type when pvr_fog_active).
 
-Mapping matches GLdc's glFog path (which QuakeSpasm-on-GLdc drove the same way):
-GL_EXP2 density -> pvr_fog_table_exp2, color -> pvr_fog_table_color, and Fog_
-SetupFrame feeds Fog_GetDensity()/64. The table is rebuilt each frame so fog
-fades follow; it's only ~128 entries and only when the map actually has fog.
+The mapping mirrors Quake's GL_EXP2 fog: density -> pvr_fog_table_exp2, color ->
+pvr_fog_table_color, with Fog_SetupFrame feeding Fog_GetDensity()/64. The table
+is rebuilt each frame so fog fades follow; it's only ~128 entries and only built
+when the map actually has fog.
 ================================================================================
 */
 #include "pvr_local.h"

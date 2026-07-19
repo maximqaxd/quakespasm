@@ -1,6 +1,6 @@
 /*
 ================================================================================
-pvr_rsurf.c -- world/brush surface submission for the native PVR renderer (maximqad)
+pvr_rsurf.c -- world/brush surface submission for the native PVR renderer
 
 The agnostic half of the world pass stays in r_world.c / r_brush.c: R_MarkSurfaces
 walks the PVS and builds per-texture surface chains, BuildSurfaceDisplayList bakes
@@ -16,10 +16,9 @@ straight into the TA through the store queues. The poly header comes from the sh
 context cache (pvr_context): opaque list, MODULATE, depth GEQUAL/write, so it slots
 in before the 2D punch-through pass.
 
-Fill status: STEP 5. Opaque textured world, lit per-vertex from the static
-lightmap (PVR_LightVertex, single MODULATE pass -- no second geometry pass).
-Lightstyle animation works via d_lightstylevalue; dynamic lights, sky, water,
-alpha surfaces and brush-model entities are still TODO.
+The world is lit per-vertex from the static lightmap (PVR_LightVertex, a single
+MODULATE pass -- no second geometry pass), with lightstyle animation via
+d_lightstylevalue and dynamic lights folded into the same vertex color.
 ================================================================================
 */
 #include "pvr_local.h"
@@ -49,7 +48,8 @@ Single-pass lighting: instead of a second modulate pass with the lightmap atlas
 and hand the result as the vertex color -- the OP header's MODULATE env then does
 texture * light. Mirrors R_BuildLightMap's DC path (grayscale, 1 byte/luxel,
 accumulate styles * d_lightstylevalue, >>7). Lightstyle animation (flicker/pulse)
-falls out for free via d_lightstylevalue. Dynamic lights are TODO.
+falls out for free via d_lightstylevalue; dynamic lights are added on top at the
+vertex (see below).
 ==============
 */
 // Accumulate every active dynamic light's contribution at a world-space vertex.

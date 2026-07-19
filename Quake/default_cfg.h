@@ -92,7 +92,7 @@ static const char default_cfg[] =
 "+mlook\n"
 
 #if defined(PLATFORM_DREAMCAST)
-// ---- Dreamcast controller layout (maximqad) --------------------------------
+// ---- Dreamcast controller layout ------------------------------------------
 // analog stick = LOOK, face buttons = MOVE, triggers = jump/attack,
 // D-pad = weapon cycling. Appended last so it overrides the generic binds above.
 // The DC has one analog stick (SDL "left stick"); joy_swapmovelook routes it to

@@ -1,17 +1,14 @@
 /*
 ================================================================================
-pvr_vid.c -- Dreamcast video driver for the native PVR renderer (maximqad)
+pvr_vid.c -- Dreamcast video driver for the native PVR renderer
 
-REPLACES gl_vidsdl.c when USE_PVR_RENDER is set (the Makefile swaps the object).
-No SDL video, no GLdc: KOS drives the display and PVR directly. Provides the vid
+Replaces gl_vidsdl.c when USE_PVR_RENDER is set (the Makefile swaps the object).
+No SDL video, no GLdc -- the display and PVR are driven directly. Provides the vid
 interface the rest of the engine expects (VID_*, GL_Begin/EndRendering) plus the
-handful of gl_ capability flags / gamma cvars other TUs reference.
+handful of gl_ capability flags / gamma cvars other translation units reference.
 
-Fixed 640x480 RGB565 (cable-aware) -- the DC's native mode. Frame boundaries open
+Fixed 640x480 RGB565 (cable-aware), the DC's native mode. Frame boundaries open
 and close a PVR scene; the render modules submit between them via pvr_dr.
-
-Fill status: STEP 1. GL_EndRendering currently draws a test triangle to prove the
-pipeline; that call is removed once pvr_rmain/pvr_rsurf drive real geometry.
 ================================================================================
 */
 // pvr_local.h pulls <dc/pvr.h> BEFORE quakedef.h -- required, because quakedef's
@@ -34,7 +31,7 @@ int		gl_stencilbits;
 float		gl_max_anisotropy;
 GLint		gl_max_texture_units = 0;
 
-// GLdc extension proc pointers other TUs link against. Unused on the PVR path
+// GL extension proc pointers other TUs link against. Unused on the PVR path
 // (no multitexture / VBO), kept NULL so the still-compiled gl_ render modules link.
 PFNGLMULTITEXCOORD2FARBPROC	GL_MTexCoord2fFunc = NULL;
 PFNGLACTIVETEXTUREARBPROC	GL_SelectTextureFunc = NULL;
