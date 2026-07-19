@@ -203,6 +203,16 @@ void CLQW_EstablishConnection (const char *host)
 	Con_DPrintf ("CLQW_EstablishConnection: %s\n", QWNET_AdrToString (cls.qw_server_adr));
 }
 
+// QuakeWorld servers stuff a handful of client commands during signon/play that
+// QuakeSpasm doesn't have. Register them as no-ops for now so they don't spam
+// "Unknown command":
+//   fullserverinfo  -- the server's serverinfo string (serverinfo tracking: later)
+//   packet          -- send a raw packet (server anti-NAT probe; unused by us)
+//   changing        -- map-change notice; the server reconnects us afterwards
+static void CLQW_Noop_f (void)
+{
+}
+
 /*
 =====================
 CLQW_Init -- one-time QW client init (called from CL_Init)
@@ -212,6 +222,9 @@ void CLQW_Init (void)
 {
 	QWNET_Init ();
 	QWNetchan_Init ();
+	Cmd_AddCommand ("fullserverinfo", CLQW_Noop_f);
+	Cmd_AddCommand ("packet", CLQW_Noop_f);
+	Cmd_AddCommand ("changing", CLQW_Noop_f);
 }
 
 #endif	/* USE_QW_PROTOCOL */

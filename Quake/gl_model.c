@@ -2689,6 +2689,24 @@ static void Mod_LoadBrushModel (qmodel_t *mod, void *buffer)
 	for (i = 0; i < (int) sizeof(dheader_t) / 4; i++)
 		((int *)header)[i] = LittleLong ( ((int *)header)[i]);
 
+#if defined(USE_QW_PROTOCOL)
+	// QuakeWorld map checksum2: XOR of the MD4 fold over every lump except
+	// entities/visibility/leafs/nodes (which may legally differ from the
+	// server's). Sent in the QW prespawn request to pass map verification.
+	{
+		unsigned	c2 = 0;
+		for (j = 0; j < HEADER_LUMPS; j++)
+		{
+			if (j == LUMP_ENTITIES || j == LUMP_VISIBILITY ||
+			    j == LUMP_LEAFS || j == LUMP_NODES)
+				continue;
+			c2 ^= Com_BlockChecksum (mod_base + header->lumps[j].fileofs,
+						 header->lumps[j].filelen);
+		}
+		mod->checksum2 = c2;
+	}
+#endif
+
 // load into heap
 
 	Mod_LoadVertexes (&header->lumps[LUMP_VERTEXES]);

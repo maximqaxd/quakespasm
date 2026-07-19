@@ -155,7 +155,7 @@ USE_QW_PROTOCOL ?= 0
 QW_OBJS =
 ifeq ($(USE_QW_PROTOCOL),1)
 CFLAGS  += -DUSE_QW_PROTOCOL
-QW_OBJS = qw_net.o qw_netchan.o qw_cl_parse.o qw_cl_main.o
+QW_OBJS = qw_net.o qw_netchan.o qw_md4.o qw_cl_parse.o qw_cl_main.o
 endif
 
 OBJS = strlcat.o strlcpy.o $(PVR_OBJS) $(QW_OBJS) \

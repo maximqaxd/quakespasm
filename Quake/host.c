@@ -775,20 +775,25 @@ void _Host_Frame (float time)
 //
 //-------------------
 
-// if running the server remotely, send intentions now after
-// the incoming messages have been read
-	if (!sv.active)
-		CL_SendCmd ();
-
-// fetch results from server
-	if (cls.state == ca_connected)
-		CL_ReadFromServer ();
-
 #if defined(USE_QW_PROTOCOL)
-// QuakeWorld drives its own connectionless handshake + netchan pump
 	if (cls.protofamily == PROTO_QW)
+	{
+	// QuakeWorld drives its own connectionless handshake + netchan pump and
+	// must not touch the NetQuake qsocket path (cls.netcon is unused for QW)
 		CLQW_RunConnection ();
+	}
+	else
 #endif
+	{
+	// if running the server remotely, send intentions now after
+	// the incoming messages have been read
+		if (!sv.active)
+			CL_SendCmd ();
+
+	// fetch results from server
+		if (cls.state == ca_connected)
+			CL_ReadFromServer ();
+	}
 
 // update video
 	if (host_speeds.value)

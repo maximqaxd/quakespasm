@@ -163,9 +163,37 @@ static void CLQW_ParseModellist (void)
 	R_NewMap ();
 	Con_Printf ("[QW] map loaded: %s\n", cl.worldmodel->name);
 
-	// prespawn (checksum 0 for now; some servers validate it -- phase 2c)
+	// The world is up: let the engine render it. (No player position until the
+	// first frame arrives in phase 3, so the view starts at the origin.)
+	cls.signon = SIGNONS;
+	cls.state = ca_connected;
+
+	// prespawn with the QW map checksum so the server accepts us
 	MSG_WriteByte (&cls.netchan.message, qwclc_stringcmd);
-	MSG_WriteString (&cls.netchan.message, va("prespawn %i 0 0", qwcl.servercount));
+	MSG_WriteString (&cls.netchan.message,
+		va("prespawn %i 0 %u", qwcl.servercount, cl.worldmodel->checksum2));
+}
+
+/*
+==============
+CLQW_ParseBaseline -- read (and for now discard) an entity baseline: modelindex,
+frame, colormap, skinnum, origin[3]/angles[3]. Storing baselines for delta
+decompression is phase 3; this keeps the byte stream in sync until then.
+==============
+*/
+static void CLQW_ParseBaseline (void)
+{
+	int	i;
+
+	(void) MSG_ReadByte ();		// modelindex
+	(void) MSG_ReadByte ();		// frame
+	(void) MSG_ReadByte ();		// colormap
+	(void) MSG_ReadByte ();		// skinnum
+	for (i = 0; i < 3; i++)
+	{
+		(void) MSG_ReadCoord (0);	// origin
+		(void) MSG_ReadAngle (0);	// angles
+	}
 }
 
 /*
@@ -228,6 +256,23 @@ void CLQW_ParseServerMessage (void)
 
 		case qwsvc_modellist:
 			CLQW_ParseModellist ();
+			break;
+
+		case qwsvc_spawnbaseline:
+			(void) MSG_ReadShort ();	// entity number
+			CLQW_ParseBaseline ();
+			break;
+
+		case qwsvc_spawnstatic:
+			CLQW_ParseBaseline ();		// static entity uses the same layout
+			break;
+
+		case qwsvc_spawnstaticsound:
+			for (i = 0; i < 3; i++)
+				(void) MSG_ReadCoord (0);	// origin
+			(void) MSG_ReadByte ();		// sound number
+			(void) MSG_ReadByte ();		// volume
+			(void) MSG_ReadByte ();		// attenuation
 			break;
 
 		case qwsvc_setangle:

@@ -183,6 +183,7 @@ void	CLQW_EstablishConnection (const char *host);	// connectionless handshake st
 void	CLQW_RunConnection (void);			// per-frame pump (from Host_Frame)
 void	CLQW_ParseServerMessage (void);			// parse a netchan message (qw_cl_parse.c)
 qboolean CLQW_IsConnected (void);			// netchan established?
+unsigned Com_BlockChecksum (const void *buffer, int length);	// MD4 fold (qw_md4.c)
 
 #endif	/* USE_QW_PROTOCOL */
 

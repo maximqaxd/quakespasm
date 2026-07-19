@@ -444,6 +444,8 @@ typedef struct qmodel_s
 //
 	int			firstmodelsurface, nummodelsurfaces;
 
+	unsigned		checksum2;	// QuakeWorld map checksum (prespawn); 0 if not a bmodel
+
 	int			numsubmodels;
 	dmodel_t	*submodels;
 
