@@ -295,6 +295,12 @@ void CL_ParseServerInfo (void)
 	if (cls.demoplayback)
 		SCR_BeginLoadingPlaque();
 
+#if defined(PLATFORM_DREAMCAST)
+	// Persistent loading screen for every connect (new game / load / demo /
+	// changelevel) -- SCR_BeginLoadingPlaque no-ops until signon completes.
+	SCR_BeginLoading ();
+#endif
+
 //
 // wipe the client_state_t struct
 //
@@ -407,6 +413,10 @@ void CL_ParseServerInfo (void)
 			Host_Error ("Model %s not found", model_precache[i]);
 		}
 		CL_KeepaliveMessage ();
+#if defined(PLATFORM_DREAMCAST)
+		// models (BSP + alias/sprite) are the bulk of the load: 0.05 -> 0.80
+		SCR_LoadingProgress (0.05f + 0.75f * (float)i / (float)nummodels);
+#endif
 	}
 
 	S_BeginPrecaching ();
@@ -414,6 +424,9 @@ void CL_ParseServerInfo (void)
 	{
 		cl.sound_precache[i] = S_PrecacheSound (sound_precache[i]);
 		CL_KeepaliveMessage ();
+#if defined(PLATFORM_DREAMCAST)
+		SCR_LoadingProgress (0.80f + 0.15f * (float)i / (float)numsounds);	// 0.80 -> 0.95
+#endif
 	}
 	S_EndPrecaching ();
 
@@ -421,6 +434,9 @@ void CL_ParseServerInfo (void)
 	cl_entities[0].model = cl.worldmodel = cl.model_precache[1];
 
 	R_NewMap ();
+#if defined(PLATFORM_DREAMCAST)
+	SCR_LoadingProgress (1.0f);	// world built (lightmaps etc.); signon does the rest
+#endif
 
 	//johnfitz -- clear out string; we don't consider identical
 	//messages to be duplicates if the map has changed in between

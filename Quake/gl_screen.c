@@ -25,6 +25,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #include "quakedef.h"
 
+#if defined(PLATFORM_DREAMCAST)
+#include <kos/dbgio.h>	/* dbgio_dev_select -- move the boot log off the framebuffer */
+#endif
+
 /*
 
 background clear
@@ -117,6 +121,12 @@ vrect_t		scr_vrect;
 qboolean	scr_disabled_for_loading;
 qboolean	scr_drawloading;
 float		scr_disabled_time;
+
+#if defined(PLATFORM_DREAMCAST)
+float		scr_loading_progress;	// 0..1, drives the loading bar
+static int	scr_loading_lastpct = -1;	// throttle redraws to whole-percent steps
+cvar_t		scr_loadingbar = {"scr_loadingbar", "1", CVAR_ARCHIVE};
+#endif
 
 int	scr_tileclear_updates = 0; //johnfitz
 
@@ -417,6 +427,9 @@ void SCR_Init (void)
 	Cvar_RegisterVariable (&scr_fov_adapt);
 	Cvar_RegisterVariable (&scr_viewsize);
 	Cvar_RegisterVariable (&scr_conspeed);
+#if defined(PLATFORM_DREAMCAST)
+	Cvar_RegisterVariable (&scr_loadingbar);
+#endif
 	Cvar_RegisterVariable (&scr_showturtle);
 	Cvar_RegisterVariable (&scr_showpause);
 	Cvar_RegisterVariable (&scr_centertime);
@@ -431,6 +444,21 @@ void SCR_Init (void)
 	SCR_LoadPics (); //johnfitz
 
 	scr_initialized = true;
+
+#if defined(PLATFORM_DREAMCAST)
+	// From here on the boot log renders through the LOADING plaque, not the raw
+	// console: Con_Printf pumps SCR_UpdateScreen for every line during Host_Init,
+	// and this makes those go through the loading branch. Cleared by the startup
+	// demo's load (SCR_EndLoadingPlaque) or the menu safety in SCR_UpdateScreen.
+	scr_drawloading = true;
+	scr_loading_progress = 0;
+	scr_loading_lastpct = -1;
+
+	// The renderer now owns the framebuffer, so stop KOS dbgio drawing the boot
+	// log over the plaque (Sys_Printf -> stdout -> the "fb" bfont console). Route
+	// it back to the serial port instead.
+	dbgio_dev_select ("scif");
+#endif
 }
 
 //============================================================================
@@ -628,6 +656,7 @@ SCR_DrawLoading
 void SCR_DrawLoading (void)
 {
 	qpic_t	*pic;
+	int	px, py;
 
 	if (!scr_drawloading)
 		return;
@@ -635,10 +664,80 @@ void SCR_DrawLoading (void)
 	GL_SetCanvas (CANVAS_MENU); //johnfitz
 
 	pic = Draw_CachePic ("gfx/loading.lmp");
-	Draw_Pic ( (320 - pic->width)/2, (240 - 48 - pic->height)/2, pic); //johnfitz -- stretched menus
+	px = (320 - pic->width)/2;
+	py = (240 - 48 - pic->height)/2;
+	Draw_Pic (px, py, pic); //johnfitz -- stretched menus
+
+#if defined(PLATFORM_DREAMCAST)
+	// progress bar fitted to the plaque, just below it: dark trough + border,
+	// filled proportionally to how much of the map has loaded.
+	if (scr_loadingbar.value)
+	{
+		int	bx = px, by = py + pic->height + 4;
+		int	bw = pic->width, bh = 8;
+		float	f = scr_loading_progress;
+
+		if (f < 0) f = 0; else if (f > 1) f = 1;
+		Draw_Fill (bx - 1, by - 1, bw + 2, bh + 2, 4, 1);	// border
+		Draw_Fill (bx, by, bw, bh, 0, 1);			// trough
+		if (f > 0)
+			Draw_Fill (bx, by, (int)(bw * f), bh, 251, 1);	// fill (bright)
+	}
+#endif
 
 	scr_tileclear_updates = 0; //johnfitz
 }
+
+#if defined(PLATFORM_DREAMCAST)
+/*
+==============
+SCR_BeginLoading -- start the persistent loading screen (works for fresh loads,
+unlike SCR_BeginLoadingPlaque which needs an already-established connection). The
+plaque stays up until SCR_EndLoadingPlaque because scr_drawloading is kept set.
+==============
+*/
+void SCR_BeginLoading (void)
+{
+	scr_drawloading = true;
+	scr_con_current = 0;
+	scr_loading_lastpct = -1;
+	Con_ClearNotify ();
+	SCR_LoadingProgress (0.0f);	// draw the plaque immediately at 0%
+}
+
+/*
+==============
+SCR_LoadingProgress -- update the bar and redraw it directly.
+
+Called from deep inside the (blocking) precache loops, so it must NOT go through
+SCR_UpdateScreen -- that path renders the 3D view and needs ~256k of stack. This
+is a minimal 2D-only frame: clear, plaque, bar. Redraws are throttled to
+whole-percent steps because GL_EndRendering blocks on vblank.
+==============
+*/
+void SCR_LoadingProgress (float frac)
+{
+	int	pct;
+
+	if (!scr_initialized || !con_initialized)
+		return;
+
+	if (frac < 0) frac = 0; else if (frac > 1) frac = 1;
+	scr_loading_progress = frac;
+	scr_drawloading = true;
+
+	pct = (int)(frac * 100.0f);
+	if (pct == scr_loading_lastpct)
+		return;
+	scr_loading_lastpct = pct;
+
+	GL_BeginRendering (&glx, &gly, &glwidth, &glheight);
+	GL_Set2D ();
+	Draw_ConsoleBackground ();	// filled Quake backdrop behind the plaque
+	SCR_DrawLoading ();
+	GL_EndRendering ();
+}
+#endif
 
 /*
 ==============
@@ -674,7 +773,15 @@ void SCR_SetUpToDrawConsole (void)
 	Con_CheckResize ();
 
 	if (scr_drawloading)
-		return;		// never a console with loading plaque
+	{
+		// No console over the plaque. Keep rendering the world behind it while
+		// we're in a settled connected state (a level change still has the old
+		// map up until the new serverinfo arrives); once disconnected/precaching
+		// there's no world, and the loading branch fills a backdrop instead.
+		con_forcedup = (cls.signon != SIGNONS) || !cl.worldmodel;
+		scr_conlines = scr_con_current = 0;
+		return;
+	}
 
 // decide on the height of the console
 	con_forcedup = !cl.worldmodel || cls.signon != SIGNONS;
@@ -875,6 +982,10 @@ SCR_EndLoadingPlaque
 void SCR_EndLoadingPlaque (void)
 {
 	scr_disabled_for_loading = false;
+#if defined(PLATFORM_DREAMCAST)
+	scr_drawloading = false;		// drop the persistent loading screen
+	scr_loading_progress = 0;
+#endif
 	Con_ClearNotify ();
 }
 
@@ -1049,6 +1160,13 @@ void SCR_UpdateScreen (void)
 	if (!scr_initialized || !con_initialized)
 		return;				// not initialized yet
 
+#if defined(PLATFORM_DREAMCAST)
+	// Safety for the startup plaque: if a menu comes up while we're still flagged
+	// loading with nothing connected (e.g. -nostartdemos, so no demo load ever
+	// calls SCR_EndLoadingPlaque), drop it so the menu is visible.
+	if (scr_drawloading && key_dest == key_menu && cls.state != ca_connected)
+		scr_drawloading = false;
+#endif
 
 	GL_BeginRendering (&glx, &gly, &glwidth, &glheight);
 
@@ -1081,8 +1199,11 @@ void SCR_UpdateScreen (void)
 	}
 	else if (scr_drawloading) //loading
 	{
+		if (con_forcedup)		// no world behind the plaque -> backdrop, not black
+			Draw_ConsoleBackground ();
 		SCR_DrawLoading ();
-		Sbar_Draw ();
+		if (host_initialized)		// Sbar_Init may not have run yet during boot
+			Sbar_Draw ();
 	}
 	else if (cl.intermission == 1 && key_dest == key_game) //end of level
 	{

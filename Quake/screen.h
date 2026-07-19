@@ -38,6 +38,10 @@ void SCR_CenterPrint (const char *str);
 
 void SCR_BeginLoadingPlaque (void);
 void SCR_EndLoadingPlaque (void);
+#if defined(PLATFORM_DREAMCAST)
+void SCR_BeginLoading (void);
+void SCR_LoadingProgress (float frac);
+#endif
 
 int SCR_ModalMessage (const char *text, float timeout); //johnfitz -- added timeout
 

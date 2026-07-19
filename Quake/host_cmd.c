@@ -854,6 +854,9 @@ static void Host_Map_f (void)
 		IN_Activate();
 	key_dest = key_game;			// remove console or menu
 	SCR_BeginLoadingPlaque ();
+#if defined(PLATFORM_DREAMCAST)
+	SCR_LoadingProgress (0.0f);		// show the plaque before the blocking world load
+#endif
 
 	svs.serverflags = 0;			// haven't completed an episode yet
 	q_strlcpy (name, Cmd_Argv(1), sizeof(name));
@@ -1285,6 +1288,9 @@ static void Host_Loadgame_f (void)
 
 	CL_Disconnect_f ();
 
+#if defined(PLATFORM_DREAMCAST)
+	SCR_LoadingProgress (0.0f);		// show the plaque before the blocking world load
+#endif
 	SV_SpawnServer (mapname);
 
 	if (!sv.active)

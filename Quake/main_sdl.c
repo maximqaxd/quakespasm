@@ -229,18 +229,6 @@ int main(int argc, char *argv[])
 
 		Host_Frame (time);
 
-#if defined(PLATFORM_DREAMCAST)
-		{	// first frame is up: move the debug console off the framebuffer (back
-			// to the serial port) so it no longer scribbles over the PVR render.
-			static qboolean dbgio_off = false;
-			if (!dbgio_off)
-			{
-				dbgio_dev_select ("scif");
-				dbgio_off = true;
-			}
-		}
-#endif
-
 		if (time < sys_throttle.value && !cls.timedemo)
 			SDL_Delay(1);
 
