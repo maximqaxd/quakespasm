@@ -480,6 +480,10 @@ void TexMgr_Init (void)
 	Cvar_RegisterVariable (&gl_max_size);
 	Cvar_RegisterVariable (&gl_picmip);
 	Cvar_RegisterVariable (&gl_picmip_models);
+	// Retail DC halves alias skins to fit 8MB VRAM; NAOMI's 16MB can keep them
+	// full resolution.
+	if (Sys_IsNaomi ())
+		Cvar_SetQuick (&gl_picmip_models, "0");
 	Cvar_RegisterVariable (&gl_texture_anisotropy);
 	Cvar_SetCallback (&gl_texture_anisotropy, &TexMgr_Anisotropy_f);
 	gl_texturemode.string = glmodes[glmode_idx].name;
@@ -626,6 +630,66 @@ static unsigned *TexMgr_ResampleTexture (unsigned *in, int inwidth, int inheight
 	}
 
 	return out;
+}
+
+/*
+===============
+TexMgr_ResampleSquare -- bilinear resample RGBA to out x out (NAOMI world mips)
+
+Same kernel as TexMgr_ResampleTexture but to an explicit square size, so a
+non-square POT world texture becomes square and can carry a PVR mip chain.
+===============
+*/
+static unsigned *TexMgr_ResampleSquare (unsigned *in, int inwidth, int inheight, int out, qboolean alpha)
+{
+	byte *nwpx, *nepx, *swpx, *sepx, *dest;
+	unsigned xfrac, yfrac, x, y, modx, mody, imodx, imody, injump, outjump;
+	unsigned *outp;
+	int i, j;
+
+	if (inwidth == out && inheight == out)
+		return in;
+
+	outp = (unsigned *) Hunk_Alloc (out*out*4);
+
+	xfrac = ((inwidth-1) << 16) / (out-1);
+	yfrac = ((inheight-1) << 16) / (out-1);
+	y = outjump = 0;
+
+	for (i = 0; i < out; i++)
+	{
+		mody = (y>>8) & 0xFF;
+		imody = 256 - mody;
+		injump = (y>>16) * inwidth;
+		x = 0;
+
+		for (j = 0; j < out; j++)
+		{
+			modx = (x>>8) & 0xFF;
+			imodx = 256 - modx;
+
+			nwpx = (byte *)(in + (x>>16) + injump);
+			nepx = nwpx + 4;
+			swpx = nwpx + inwidth*4;
+			sepx = swpx + 4;
+
+			dest = (byte *)(outp + outjump + j);
+
+			dest[0] = (nwpx[0]*imodx*imody + nepx[0]*modx*imody + swpx[0]*imodx*mody + sepx[0]*modx*mody)>>16;
+			dest[1] = (nwpx[1]*imodx*imody + nepx[1]*modx*imody + swpx[1]*imodx*mody + sepx[1]*modx*mody)>>16;
+			dest[2] = (nwpx[2]*imodx*imody + nepx[2]*modx*imody + swpx[2]*imodx*mody + sepx[2]*modx*mody)>>16;
+			if (alpha)
+				dest[3] = (nwpx[3]*imodx*imody + nepx[3]*modx*imody + swpx[3]*imodx*mody + sepx[3]*modx*mody)>>16;
+			else
+				dest[3] = 255;
+
+			x += xfrac;
+		}
+		outjump += out;
+		y += yfrac;
+	}
+
+	return outp;
 }
 
 /*
@@ -828,6 +892,26 @@ static qboolean TexMgr_WantMipmap (gltexture_t *glt)
 
 /*
 ================
+TexMgr_NaomiSquareWorld -- NAOMI-only: should this world texture be squared so it
+qualifies for a mip chain?
+
+Retail DC leaves non-square world textures single-level to stay within 8MB VRAM;
+NAOMI's 16MB can afford to upsample the short axis to a square POT and mipmap the
+lot. Alias skins (MDLSKIN) and 2D/HUD pics (NOPICMIP) are left alone -- this is
+just brush/world surfaces (TEXPREF_MIPMAP) that aren't already square.
+================
+*/
+static qboolean TexMgr_NaomiSquareWorld (gltexture_t *glt)
+{
+	if (!Sys_IsNaomi ())
+		return false;
+	return (glt->flags & TEXPREF_MIPMAP)
+	    && !(glt->flags & TEXPREF_MDLSKIN)
+	    && glt->width != glt->height;
+}
+
+/*
+================
 TexMgr_LoadImage32 -- process 32bit RGBA then upload to VRAM
 ================
 */
@@ -840,6 +924,15 @@ static void TexMgr_LoadImage32 (gltexture_t *glt, unsigned *data)
 		data = TexMgr_ResampleTexture (data, glt->width, glt->height, glt->flags & TEXPREF_ALPHA);
 		glt->width = TexMgr_Pad (glt->width);
 		glt->height = TexMgr_Pad (glt->height);
+	}
+
+	// NAOMI: upsample the short axis so non-square world textures become a square
+	// POT and pick up a mip chain below (TexMgr_WantMipmap needs width == height).
+	if (TexMgr_NaomiSquareWorld (glt))
+	{
+		int s = TexMgr_Pad ((glt->width > glt->height) ? glt->width : glt->height);
+		data = TexMgr_ResampleSquare (data, glt->width, glt->height, s, glt->flags & TEXPREF_ALPHA);
+		glt->width = glt->height = s;
 	}
 
 	// mipmap down to the picmip'd / hardware-safe size
@@ -964,7 +1057,7 @@ static void TexMgr_LoadImage8 (gltexture_t *glt, byte *data, unsigned int *usepa
 	// Non-POT / padded pics fall through to the 32-bit path below (they're small).
 	// Square-POT mipmapped textures also fall through -- their mip chain is 565/4444
 	// twiddled (paletted mips can't be box-filtered), handled in TexMgr_LoadImage32.
-	if (global_pal && !TexMgr_WantMipmap (glt) &&
+	if (global_pal && !TexMgr_WantMipmap (glt) && !TexMgr_NaomiSquareWorld (glt) &&
 	    (int) glt->width  == TexMgr_Pad ((int) glt->width) &&
 	    (int) glt->height == TexMgr_Pad ((int) glt->height))
 	{

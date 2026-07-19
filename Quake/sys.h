@@ -69,5 +69,10 @@ void Sys_Sleep (unsigned long msecs);
 void Sys_SendKeyEvents (void);
 // Perform Key_Event () callbacks until the input que is empty
 
+#if defined(PLATFORM_DREAMCAST)
+qboolean Sys_IsNaomi (void);
+// true on Sega NAOMI arcade hardware (32MB RAM / 16MB VRAM), false on retail DC
+#endif
+
 #endif	/* _QUAKE_SYS_H */
 

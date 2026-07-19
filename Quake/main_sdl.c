@@ -43,7 +43,8 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include <malloc.h>
 #include <unistd.h>	/* sbrk */
 #include <kos/thread.h>
-#include <arch/arch.h>	/* _arch_mem_top */
+#include <kos/dbgio.h>	/* dbgio_dev_select -- boot log to the framebuffer */
+#include <arch/arch.h>	/* _arch_mem_top, HW_MEMSIZE */
 KOS_INIT_FLAGS(INIT_DEFAULT | INIT_CDROM | INIT_CONTROLLER | INIT_KEYBOARD |
                INIT_MOUSE | INIT_VMU | INIT_NET);
 
@@ -72,7 +73,9 @@ static int DC_HeapSize (void)
 	   hunk gives the resident model heap (DC_MHeap) and Cache more room. */
 	const size_t reserve = 3 * 512 * 1024;		/* 1.5MB */
 	const size_t floor   = MINIMUM_MEMORY_LEVELPAK;	/* never return less than Quake requires */
-	const size_t ceiling = 11 * 1024 * 1024;
+	/* 32MB machines (NAOMI, or a modded Dreamcast -- KOS reports the true memory
+	   top at runtime) get a far bigger hunk; retail 16MB stays at 11MB. */
+	const size_t ceiling = (HW_MEMSIZE > HW_MEM_16) ? 26 * 1024 * 1024 : 11 * 1024 * 1024;
 	uintptr_t brk = (uintptr_t) sbrk (0);
 	size_t avail;
 
@@ -134,6 +137,10 @@ int main(int argc, char *argv[])
 
 #if defined(PLATFORM_DREAMCAST)
 	DC_InitThreadStack ();
+	// Route KOS stdio/dbglog to the framebuffer so the boot + console log is
+	// visible on the TV while the game loads; switched off once the first game
+	// frame is drawn (below), since the PVR then owns the framebuffer.
+	dbgio_dev_select ("fb");
 	SDL_SetHint ("SDL_DC_VIDEO_MODE", "SDL_DC_OPENGL_VIDEO");
 	SDL_SetHint ("SDL_VIDEO_DOUBLE_BUFFER", "1");
 #endif
@@ -221,6 +228,18 @@ int main(int argc, char *argv[])
 		time = newtime - oldtime;
 
 		Host_Frame (time);
+
+#if defined(PLATFORM_DREAMCAST)
+		{	// first frame is up: move the debug console off the framebuffer (back
+			// to the serial port) so it no longer scribbles over the PVR render.
+			static qboolean dbgio_off = false;
+			if (!dbgio_off)
+			{
+				dbgio_dev_select ("scif");
+				dbgio_off = true;
+			}
+		}
+#endif
 
 		if (time < sys_throttle.value && !cls.timedemo)
 			SDL_Delay(1);

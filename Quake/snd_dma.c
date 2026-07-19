@@ -202,6 +202,13 @@ void S_Init (void)
 		Cvar_SetQuick (&sndspeed, com_argv[i + 1]);
 	}
 
+#if defined(PLATFORM_DREAMCAST)
+	// Retail DC mixes at 22kHz to stay in its memory/CPU budget; NAOMI has 32MB
+	// and can afford full 44kHz. (-mixspeed below still overrides.)
+	if (Sys_IsNaomi ())
+		Cvar_SetQuick (&snd_mixspeed, "44100");
+#endif
+
 	i = COM_CheckParm("-mixspeed");
 	if (i && i < com_argc-1)
 	{

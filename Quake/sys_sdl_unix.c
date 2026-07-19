@@ -239,6 +239,24 @@ static int Sys_NumCPUs (void)
 	return 1;	/* single-core SH4 */
 }
 
+// Declared here rather than via <arch/arch.h>: that header defines a symbol
+// named HZ, which collides with Quake's HZ macro. HW_TYPE_NAOMI is 0xa.
+extern int hardware_sys_mode (int *region);
+#define DC_HW_TYPE_NAOMI	0xa
+/*
+================
+Sys_IsNaomi -- true on Sega NAOMI arcade hardware (32MB RAM / 16MB VRAM) versus a
+retail Dreamcast (16MB / 8MB). Cached: the system-mode register never changes.
+================
+*/
+qboolean Sys_IsNaomi (void)
+{
+	static int naomi = -1;
+	if (naomi < 0)
+		naomi = (hardware_sys_mode (NULL) == DC_HW_TYPE_NAOMI);
+	return naomi;
+}
+
 #else /* unknown OS */
 static int Sys_NumCPUs (void)
 {
