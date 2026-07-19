@@ -93,7 +93,13 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #define	DIST_EPSILON	(0.03125)	// 1/32 epsilon to keep floating point happy (moved from world.c)
 
 #define	MAX_MSGLEN	64000		// max length of a reliable message //ericw -- was 32000
-#define	MAX_DATAGRAM	64000		// max length of unreliable message //johnfitz -- was 1024
+// Per-packet datagram size. johnfitz bumped this to 64000 (relying on IP
+// fragmentation), but the Dreamcast's KOS IP stack doesn't reliably reassemble
+// fragmented UDP, so multi-frame signon packets were being dropped -- the client
+// would connect but never receive the serverinfo. Back to the classic 1024 so
+// every datagram (and each chunk of a reliable message) fits one Ethernet frame.
+// This has to match on the server too; a server built from this tree does.
+#define	MAX_DATAGRAM	1024		// max length of unreliable message (single Ethernet frame)
 
 #define	DATAGRAM_MTU	1400		// johnfitz -- actual limit for unreliable messages to nonlocal clients
 
