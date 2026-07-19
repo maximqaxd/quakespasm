@@ -7,19 +7,14 @@ native PowerVR renderer.
 
 ## Features
 
-- **Native PVR renderer** — geometry streams straight to the Tile Accelerator
-  through the SH4 store queues (`pvr_dr`); no GLdc, no main-RAM vertex lists, so
-  render RAM stays at a fixed few hundred KB.
-- **SH4 hardware math** (sh4zam) — FSCA/FSQRT/FDIV in the vector helpers and one
-  `ftrv` per vertex against the hardware matrix bank (xmtrx).
+- **Native PVR renderer** — geometry streams straight to the Tile Accelerator.
+- **SH4 hardware math** (sh4zam).
 - Hardware table fog, per-vertex lighting with dynamic lights, and lightstyle
   animation.
 - Alias (`.mdl`) models, sky (flat / scrolling / skybox), warped water,
   particles, sprites, entity shadows, and underwater warp.
 - Hardware mipmaps for square world textures; N64-style translucent overlay HUD.
-- VMU save games (zlib-compressed) with a BIOS icon, plus config stored on the VMU.
-- Cable-aware 640×480 RGB565 (VGA / RGB / composite) and Dreamcast controller
-  bindings.
+- VMU save games (zlib-compressed), plus config stored on the VMU.
 
 ## Requirements
 

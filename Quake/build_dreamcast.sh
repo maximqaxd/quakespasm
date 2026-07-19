@@ -62,6 +62,12 @@ build_cdi() {
         echo "error: mkdcdisc not found in PATH." >&2
         exit 1
     fi
+    # Ship the engine's own pak (menu/progs assets) alongside the game data.
+    if [ -f "quakespasm.pak" ]; then
+        echo ">> Copying quakespasm.pak -> $DATA_DIR/id1/"
+        mkdir -p "$DATA_DIR/id1"
+        cp -f "quakespasm.pak" "$DATA_DIR/id1/quakespasm.pak"
+    fi
     if [ ! -d "$DATA_DIR/id1" ] || [ -z "$(find "$DATA_DIR/id1" -iname '*.pak' 2>/dev/null)" ]; then
         echo ">> WARNING: no .pak files under $DATA_DIR/id1 -- the disc will boot"
         echo "   but the engine won't find game data. See $DATA_DIR/id1/*.txt."
