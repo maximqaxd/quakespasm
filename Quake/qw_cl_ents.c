@@ -35,6 +35,24 @@ static qw_packet_entities_t	qw_snapshots[QW_UPDATE_BACKUP];
 static int			qw_snap_seq;	// sequence of the newest snapshot
 static qboolean			qw_have_snap;	// a full frame is available to link
 
+// Nail projectiles (svc_nails): resent in full each frame as packed 48-bit
+// entities, so they are cleared and refilled per server message.
+#define	QW_MAX_PROJECTILES	32
+typedef struct
+{
+	int	modelindex;
+	vec3_t	origin;
+	vec3_t	angles;
+} qw_projectile_t;
+static qw_projectile_t	qw_projectiles[QW_MAX_PROJECTILES];
+static int		qw_num_projectiles;
+static entity_t		qw_proj_ents[QW_MAX_PROJECTILES];	// scratch render entities
+
+void CLQW_ClearProjectiles (void)
+{
+	qw_num_projectiles = 0;
+}
+
 /*
 ==============
 CLQW_ClearEntities -- wipe the snapshot/baseline/player state at level change.
@@ -49,6 +67,39 @@ void CLQW_ClearEntities (void)
 	qw_snap_seq = 0;
 	qw_parsecount = 0;
 	qw_playerindex = qw_spikeindex = qw_flagindex = -1;
+	CLQW_ClearProjectiles ();
+}
+
+/*
+==================
+CLQW_ParseProjectiles -- svc_nails: decode the packed nail list (6 bytes each:
+3 axes at 13 bits + 2 angle bytes) into the projectile array.
+==================
+*/
+void CLQW_ParseProjectiles (void)
+{
+	int		i, c, j;
+	byte		bits[6];
+	qw_projectile_t	*pr;
+
+	c = MSG_ReadByte ();
+	for (i = 0; i < c; i++)
+	{
+		for (j = 0; j < 6; j++)
+			bits[j] = MSG_ReadByte ();
+
+		if (qw_num_projectiles == QW_MAX_PROJECTILES)
+			continue;
+
+		pr = &qw_projectiles[qw_num_projectiles++];
+		pr->modelindex = qw_spikeindex;
+		pr->origin[0] = (( bits[0] + ((bits[1]&15)<<8) ) <<1) - 4096;
+		pr->origin[1] = (( (bits[1]>>4) + (bits[2]<<4) ) <<1) - 4096;
+		pr->origin[2] = (( bits[3] + ((bits[4]&15)<<8) ) <<1) - 4096;
+		pr->angles[0] = 360.0f * (bits[4]>>4) / 16.0f;
+		pr->angles[1] = 360.0f * bits[5] / 256.0f;
+		pr->angles[2] = 0;
+	}
 }
 
 /*
@@ -354,6 +405,39 @@ static void CLQW_LinkPlayers (void)
 
 /*
 ===============
+CLQW_LinkProjectiles -- draw the nail projectiles decoded this frame. They have
+no persistent edict, so a scratch entity pool backs the visedict pointers.
+===============
+*/
+static void CLQW_LinkProjectiles (void)
+{
+	int		i;
+	qw_projectile_t	*pr;
+	entity_t	*ent;
+	qmodel_t	*model;
+
+	for (i = 0, pr = qw_projectiles; i < qw_num_projectiles; i++, pr++)
+	{
+		if (pr->modelindex <= 0 || pr->modelindex >= MAX_MODELS)
+			continue;
+		model = cl.model_precache[pr->modelindex];
+		if (!model)
+			continue;
+		if (cl_numvisedicts >= MAX_VISEDICTS)
+			break;
+
+		ent = &qw_proj_ents[i];
+		memset (ent, 0, sizeof(*ent));
+		ent->model = model;
+		ent->alpha = 0;
+		VectorCopy (pr->origin, ent->origin);
+		VectorCopy (pr->angles, ent->angles);
+		cl_visedicts[cl_numvisedicts++] = ent;
+	}
+}
+
+/*
+===============
 CLQW_EmitEntities -- rebuild the visible-entity list for this frame.
 ===============
 */
@@ -369,7 +453,8 @@ void CLQW_EmitEntities (void)
 
 	CLQW_LinkPlayers ();
 	CLQW_LinkPacketEntities ();
-	// nail projectiles and temp entities are added in later steps
+	CLQW_LinkProjectiles ();
+	// temp entities are added in a later step
 }
 
 #endif	/* USE_QW_PROTOCOL */

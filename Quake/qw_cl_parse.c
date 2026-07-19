@@ -344,6 +344,7 @@ void CLQW_ParseServerMessage (void)
 	const char *s;
 
 	qw_parsecount++;	// one server message = one frame of entity/player state
+	CLQW_ClearProjectiles ();	// nails are resent in full each frame
 
 	while (1)
 	{
@@ -455,11 +456,7 @@ void CLQW_ParseServerMessage (void)
 			break;
 
 		case qwsvc_nails:
-			{
-				int c = MSG_ReadByte ();
-				for (i = 0; i < c * 6; i++)
-					(void) MSG_ReadByte ();	// 6 bytes per nail
-			}
+			CLQW_ParseProjectiles ();
 			break;
 
 		case qwsvc_chokecount:
