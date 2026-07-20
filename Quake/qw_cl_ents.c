@@ -34,6 +34,14 @@ int			qw_flagindex = -1;
 extern gltexture_t	*playertextures[MAX_SCOREBOARD];
 static int		qw_translate_model[QW_MAX_CLIENTS];
 static int		qw_translate_skin[QW_MAX_CLIENTS];
+#if defined(PLATFORM_DREAMCAST)
+// DC VRAM guard: each translated player skin is a full SRC_INDEXED texture held
+// in VRAM. With up to 32 QW clients that churns the whole texture pool (and
+// spams TexMgr_ReloadImage), so cap the number of distinct per-player skins.
+// Extra players wear the stock skin -- uncolored, but no per-player VRAM cost.
+#define QW_MAX_SKIN_TRANSLATIONS	3
+static int		qw_num_translations;
+#endif
 
 // Snapshot ring keyed by the server packet sequence, so a delta can copy any of
 // the recently received frames forward. Hunk-allocated (~208 KB) rather than
@@ -100,6 +108,9 @@ void CLQW_ClearEntities (void)
 	qw_playerindex = qw_spikeindex = qw_flagindex = -1;
 	memset (qw_translate_model, -1, sizeof(qw_translate_model));
 	memset (qw_translate_skin, -1, sizeof(qw_translate_skin));
+#if defined(PLATFORM_DREAMCAST)
+	qw_num_translations = 0;
+#endif
 	CLQW_ClearProjectiles ();
 }
 
@@ -534,7 +545,18 @@ static void CLQW_LinkPlayers (void)
 			{
 				qw_translate_model[j] = pl->modelindex;
 				qw_translate_skin[j] = pl->skinnum;
+#if defined(PLATFORM_DREAMCAST)
+				// only spawn a fresh VRAM skin while under the cap; a slot that
+				// already owns one may re-translate freely (it reuses its texture)
+				if (playertextures[j] || qw_num_translations < QW_MAX_SKIN_TRANSLATIONS)
+				{
+					if (!playertextures[j])
+						qw_num_translations++;
+					R_TranslateNewPlayerSkin (j);	// reads cl_entities[j+1] (= ent)
+				}
+#else
 				R_TranslateNewPlayerSkin (j);	// reads cl_entities[j+1] (= ent)
+#endif
 			}
 			ent->colormap = playertextures[j] ? cl.scores[j].translations : vid.colormap;
 		}

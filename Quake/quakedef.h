@@ -204,7 +204,10 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 //===========================================
 
-#define	MAX_SCOREBOARD		16
+#define	MAX_SCOREBOARD		32	// QuakeWorld allows 32 client slots (players +
+					// spectators); NetQuake used 16. This sizes
+					// playertextures[] and fragsort[], which the QW
+					// skin/scoreboard paths index by client slot.
 #define	MAX_SCOREBOARDNAME	32
 
 #define	SOUND_CHANNELS		8
