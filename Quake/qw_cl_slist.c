@@ -377,7 +377,9 @@ static void CLQW_Servers_f (void)
 void CLQW_SList_Init (void)
 {
 	Cvar_RegisterVariable (&qw_masters);
-	Cmd_AddCommand ("slist", CLQW_SList_f);
+	// "slist" is already taken by the NetQuake LAN probe (net_main.c); use a
+	// QW-specific name so both remain reachable from the console.
+	Cmd_AddCommand ("qwslist", CLQW_SList_f);
 	Cmd_AddCommand ("qwservers", CLQW_Servers_f);
 }
 
