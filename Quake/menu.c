@@ -724,9 +724,9 @@ int		setup_bottom;
 // asks the server to send at, and its own send throttle -- see QWNetchan_Rate).
 static const struct { const char *name; int rate; } setup_rates[] =
 {
-	{ "Modem", 2500 },
-	{ "BBA",   10000 },
-	{ "W5500", 25000 },
+	{ "Modem", 2500 },	// 56k PPP ceiling (~5 KB/s)
+	{ "W5500", 15000 },	// SPI ethernet: capable but bus/CPU-bound, higher latency
+	{ "BBA",   30000 },	// RTL8139 10Mbit over DMA: fastest DC adapter, full rate
 };
 #define	NUM_SETUP_RATES	((int)(sizeof(setup_rates)/sizeof(setup_rates[0])))
 #define	SETUP_RATE_ROW	4
