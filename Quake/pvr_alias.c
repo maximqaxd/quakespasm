@@ -35,10 +35,14 @@ keeps texture-header switches to a minimum.
 static shz_vec4_t	pa_clip[PVR_ALIAS_MAXVERTS];	// clip-space position per vertex
 static unsigned char	pa_vis[PVR_ALIAS_MAXVERTS];	// 1 = in front of the near plane
 
-// Fire one already-transformed vertex into the DR store queue.
+// Fire one already-transformed vertex into the DR store queue. The perspective
+// divide uses FSRRA (1/w in ~1-2 cycles vs ~10+ for fdiv): PA_EMIT only runs for
+// fully-visible tris (all corners passed the near-plane test), so w is safely > 0
+// and FSRRA's reduced precision is sub-pixel. Straddling tris take the precise
+// divide in pvr_clip.
 #define PA_EMIT(slot, cmd)							\
 	do {									\
-		float iw = 1.0f / pa_clip[slot].w;				\
+		float iw = shz_invf_fsrra (pa_clip[slot].w);			\
 		pvr_vertex_t *vp = (pvr_vertex_t *) pvr_dr_target (NULL);	\
 		vp->flags = (cmd);						\
 		vp->x = pa_clip[slot].x * iw;					\

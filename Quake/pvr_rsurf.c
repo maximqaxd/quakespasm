@@ -180,8 +180,11 @@ void PVR_EmitPoly (glpoly_t *p, const float *uu, const float *vv, const uint32_t
 		// zig-zag strip order over the fan: 0, 1, n-1, 2, n-2, 3, ...
 		int lo = 2, hi = n - 1, emitted = 0;
 
+		// FSRRA perspective divide (1/w in ~1-2 cycles vs ~10+ for fdiv). Fully-
+		// visible fast path (vismask == allvis): every w is safely > 0, so FSRRA's
+		// precision is sub-pixel. The near-plane clip path keeps the precise divide.
 		#define EMITV(idx) do {                                                  \
-			float iw = 1.0f / clip[idx].w;                                   \
+			float iw = shz_invf_fsrra (clip[idx].w);                         \
 			pvr_vertex_t *vp = (pvr_vertex_t *) pvr_dr_target (NULL);         \
 			vp->flags = (++emitted == n) ? PVR_CMD_VERTEX_EOL : PVR_CMD_VERTEX;\
 			vp->x = clip[idx].x * iw; vp->y = clip[idx].y * iw; vp->z = iw;   \

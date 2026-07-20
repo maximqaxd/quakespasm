@@ -291,7 +291,10 @@ GL_MakeAliasModelDisplayLists
 */
 void GL_MakeAliasModelDisplayLists (qmodel_t *m, aliashdr_t *hdr)
 {
-	int		i, j;
+	int		i;
+#if !defined(PLATFORM_DREAMCAST)
+	int		j;
+#endif
 	int			*cmds;
 	trivertx_t	*verts;
 	float	hscale, vscale; //johnfitz -- padded skins
@@ -335,29 +338,35 @@ void GL_MakeAliasModelDisplayLists (qmodel_t *m, aliashdr_t *hdr)
 	}
 	//johnfitz
 
-	verts = (trivertx_t *) Hunk_Alloc (paliashdr->numposes * paliashdr->poseverts * sizeof(trivertx_t));
-	paliashdr->posedata = (byte *)verts - (byte *)paliashdr;
-	for (i=0 ; i<paliashdr->numposes ; i++)
-		for (j=0 ; j<numorder ; j++)
-			*verts++ = poseverts[i][vertexorder[j]];
-
 #if defined(PLATFORM_DREAMCAST)
 	{
-		float			*st_dc;
+		// De-duplicated indexed mesh for the native PVR path. The command list
+		// emits shared vertices once per strip, so poseverts (numorder) contains a
+		// lot of duplicates; but we submit an INDEXED triangle list, so we only need
+		// each unique (mdl-vertex, texcoord) pair once. De-duping down to that set
+		// cuts the per-frame XMTRX transform count and shrinks the pose pool (big
+		// for many-frame models). A seam vertex keeps its two texcoords (front/back),
+		// so the unique count is bounded by 2*numverts (<= 2*MAXALIASVERTS).
+		static int	dc_uv[MAXALIASVERTS * 2];	// unique -> mdl vertex index
+		static float	dc_ust[MAXALIASVERTS * 2 * 2];	// unique -> (s,t)
+		static int	dc_head[MAXALIASVERTS];		// mdl vertex -> first unique, or -1
+		static int	dc_next[MAXALIASVERTS * 2];	// chain of uniques sharing a vertex
+		float		*st_dc;
 		unsigned short	*idx_dc;
-		int				*cmd;
-		int				vnum = 0, nidx = 0;
+		int		*cmd;
+		int		vnum = 0, nidx = 0, nuniq = 0, u;
 
-		st_dc = (float *) Hunk_Alloc (paliashdr->poseverts * 2 * sizeof(float));
+		for (i = 0; i < paliashdr->numverts; i++)
+			dc_head[i] = -1;
+
 		idx_dc = (unsigned short *) Hunk_Alloc (paliashdr->numtris * 3 * sizeof(unsigned short));
-		paliashdr->st_dc = (byte *)st_dc - (byte *)paliashdr;
 		paliashdr->idx_dc = (byte *)idx_dc - (byte *)paliashdr;
 
 		cmd = (int *)((byte *)paliashdr + paliashdr->commands);
 		while (1)
 		{
 			int count = *cmd++;
-			int k, first = vnum, prev = 0, pprev = 0;
+			int k, first = 0, prev = 0, pprev = 0;
 			qboolean fan;
 
 			if (!count)
@@ -368,12 +377,30 @@ void GL_MakeAliasModelDisplayLists (qmodel_t *m, aliashdr_t *hdr)
 
 			for (k = 0 ; k < count ; k++)
 			{
-				int cur = vnum;
-				st_dc[cur*2+0] = ((float *)cmd)[0];
-				st_dc[cur*2+1] = ((float *)cmd)[1];
+				float	s  = ((float *)cmd)[0];
+				float	t  = ((float *)cmd)[1];
+				int	mv = vertexorder[vnum];
+				int	cur;
 				cmd += 2;
 				vnum++;
 
+				// find an existing unique with the same mdl vertex + texcoord
+				// (walk the per-vertex chain: at most the 2 seam variants)
+				for (u = dc_head[mv]; u != -1; u = dc_next[u])
+					if (dc_ust[u*2] == s && dc_ust[u*2+1] == t)
+						break;
+				if (u == -1)
+				{
+					u = nuniq++;
+					dc_uv[u] = mv;
+					dc_ust[u*2] = s; dc_ust[u*2+1] = t;
+					dc_next[u] = dc_head[mv];
+					dc_head[mv] = u;
+				}
+				cur = u;
+
+				if (k == 0)
+					first = cur;
 				if (k >= 2)
 				{
 					if (fan)
@@ -399,8 +426,33 @@ void GL_MakeAliasModelDisplayLists (qmodel_t *m, aliashdr_t *hdr)
 				prev = cur;
 			}
 		}
+
+		paliashdr->poseverts = nuniq;
+
+		// deduped pose pool + texcoords, sized to the unique count
+		verts = (trivertx_t *) Hunk_Alloc (paliashdr->numposes * nuniq * sizeof(trivertx_t));
+		paliashdr->posedata = (byte *)verts - (byte *)paliashdr;
+		for (i = 0; i < paliashdr->numposes; i++)
+			for (u = 0; u < nuniq; u++)
+				*verts++ = poseverts[i][dc_uv[u]];
+
+		st_dc = (float *) Hunk_Alloc (nuniq * 2 * sizeof(float));
+		paliashdr->st_dc = (byte *)st_dc - (byte *)paliashdr;
+		for (u = 0; u < nuniq; u++)
+		{
+			st_dc[u*2]   = dc_ust[u*2];
+			st_dc[u*2+1] = dc_ust[u*2+1];
+		}
+
+		Con_DPrintf2 ("  DC %s: %d strip verts -> %d unique\n", m->name, numorder, nuniq);
 	}
 #else
+	verts = (trivertx_t *) Hunk_Alloc (paliashdr->numposes * paliashdr->poseverts * sizeof(trivertx_t));
+	paliashdr->posedata = (byte *)verts - (byte *)paliashdr;
+	for (i=0 ; i<paliashdr->numposes ; i++)
+		for (j=0 ; j<numorder ; j++)
+			*verts++ = poseverts[i][vertexorder[j]];
+
 	// ericw
 	GL_MakeAliasModelDisplayLists_VBO (m, paliashdr);
 #endif
