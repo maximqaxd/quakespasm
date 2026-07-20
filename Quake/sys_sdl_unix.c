@@ -257,6 +257,90 @@ qboolean Sys_IsNaomi (void)
 	return naomi;
 }
 
+#include <dc/video.h>		/* vram_s, vid_empty */
+#include <dc/biosfont.h>	/* bfont_draw_str, BFONT_* */
+#include <kos/dbgio.h>		/* dbgio_dev_select */
+extern uint32_t	_arch_mem_top;	/* KOS symbols (avoid <arch/arch.h> -- HZ clash) */
+extern char	_etext;
+
+// bfont-draw a string horizontally centered on the 640-wide framebuffer.
+static void DC_FatalLine (int y, const char *s)
+{
+	int	len = (int) strlen (s);
+	int	x = (640 - len * BFONT_THIN_WIDTH) / 2;
+	if (x < 0) x = 0;
+	bfont_draw_str (vram_s + (unsigned) y * 640 + (unsigned) x, 640, true, s);
+}
+
+/*
+================
+Sys_DC_FatalScreen -- clear the screen and print the fatal error centered, with a
+stack trace: walk the SH4 stack for words that point just after a call (BSR/BSRF/
+JSR) instruction -- those are return addresses. Resolve them offline with
+sh-elf-addr2line against the unstripped .elf.
+================
+*/
+static void Sys_DC_FatalScreen (const char *text)
+{
+	uint32_t	sp = 0, pr = 0;
+	char		line[96], tmp[16];
+	int		y, so, found = 0, col;
+
+	__asm__ __volatile__ ("mov r15,%0\n\tsts pr,%1\n" : "+r" (sp), "+r" (pr));
+
+	dbgio_dev_select ("scif");	// mirror the trace to the serial port for addr2line
+	vid_empty ();			// clear the framebuffer
+
+	y = 60;
+	DC_FatalLine (y, "======== FATAL ERROR ========");	y += 40;
+	DC_FatalLine (y, text);					y += 40;
+	DC_FatalLine (y, "(system halted)");			y += 48;
+	DC_FatalLine (y, "STACK TRACE");			y += 30;
+
+	printf ("\nSTACK: %08lx ", (unsigned long) pr);
+	q_snprintf (line, sizeof(line), "%08lx ", (unsigned long) pr);
+	col = 1;
+
+	if (!(sp & 3) && sp > 0x8c000000 && sp < _arch_mem_top)
+	{
+		char	**spp = (char **) sp;
+		for (so = 0; so < 16384; so++)
+		{
+			char		*p;
+			unsigned short	*ip, in;
+
+			if ((uintptr_t) &spp[so] >= _arch_mem_top)
+				break;
+			p = spp[so];
+			if (p <= (char *) 0x8c000000 || p >= &_etext || ((uintptr_t) p & 1))
+				continue;
+			ip = (unsigned short *) p;
+			in = ip[-2];	// the word before a return address is the call
+			if (((in & 0xf000) == 0xb000) ||	// BSR
+			    ((in & 0xf0ff) == 0x0003) ||	// BSRF Rn
+			    ((in & 0xf0ff) == 0x400b))		// JSR @Rn
+			{
+				q_snprintf (tmp, sizeof(tmp), "%08lx ", (unsigned long) (uintptr_t) p);
+				printf ("%s", tmp);
+				q_strlcat (line, tmp, sizeof(line));
+				if (++col >= 5)
+				{
+					DC_FatalLine (y, line);
+					y += 28;
+					line[0] = 0;
+					col = 0;
+				}
+				if (++found > 20)
+					break;
+			}
+		}
+	}
+	if (line[0])
+		DC_FatalLine (y, line);
+	printf ("\n");
+	fflush (stdout);
+}
+
 #else /* unknown OS */
 static int Sys_NumCPUs (void)
 {
@@ -488,6 +572,15 @@ void Sys_Error (const char *error, ...)
 	va_start (argptr, error);
 	q_vsnprintf (text, sizeof(text), error, argptr);
 	va_end (argptr);
+
+#if defined(PLATFORM_DREAMCAST)
+	// No terminal on the Dreamcast, and exiting drops straight to the BIOS before
+	// the error can be read. Draw the error centered on screen with a stack trace,
+	// and hang so it stays on the TV.
+	Sys_DC_FatalScreen (text);
+	for (;;)
+		usleep (100000);
+#endif
 
 	fputs (errortxt1, stderr);
 	Host_Shutdown ();
