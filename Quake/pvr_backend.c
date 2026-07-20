@@ -22,12 +22,12 @@ static float	pvr_clear[3] = { 0.0f, 0.0f, 0.0f };
 // RAM -- the whole point over GLdc), autosort enabled so the PVR sorts the TR
 // list, and 2 OPB-overflow sets to avoid tile-boundary flicker on heavy scenes.
 // Kept lean so full-res (gl_picmip 0) textures fit the 8MB VRAM: all bins 8-word,
-// 768KB vertex buffer. Bump these up if dense scenes drop polys or flicker.
+// 1280KB vertex buffer. Bump these up if dense scenes drop polys or flicker.
 static pvr_init_params_t pvr_params =
 {
 	/* opb_sizes: OP, OP-mod, TR, TR-mod, PT */
 	{ PVR_BINSIZE_8, PVR_BINSIZE_0, PVR_BINSIZE_8, PVR_BINSIZE_0, PVR_BINSIZE_8 },
-	3072 * 256,	/* vertex_buf_size = 768KB (VRAM) */
+	5120 * 256,	/* vertex_buf_size = 1280KB (VRAM) = 768KB + 512KB */
 	0,		/* dma_enabled */
 	0,		/* fsaa_enabled */
 	0,		/* autosort_disabled (0 = PVR autosorts translucents) */

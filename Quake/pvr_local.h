@@ -125,10 +125,15 @@ void	PVR_SetViewport (int x, int y, int w, int h);
 //==============================================================================
 struct gltexture_s;
 void	PVR_TexAlloc_Init (void);
+void	PVR_TexAlloc_Shutdown (void);
 
-// VRAM allocator (pvr_alloc.c) -- thin wrappers over pvr_mem_malloc/free.
+// VRAM allocator (pvr_alloc.c) -- page-aware sub-allocator over one pvr_mem pool.
 void   *PVR_VramAlloc (unsigned bytes);		// returns pvr_ptr_t (NULL on OOM)
 void	PVR_VramFree (void *ptr);
+size_t	PVR_VramFreeBytes (void);		// total free VRAM in the texture pool
+size_t	PVR_VramLargestFreeBytes (void);	// largest contiguous free run
+size_t	PVR_VramUsedBytes (void);		// bytes currently handed out
+size_t	PVR_VramPoolBytes (void);		// total pool size
 
 // Texture upload (pvr_image.c). The gltexture_t receives a VRAM pointer (pvr_vram)
 // + a compiled PVR_TXRFMT_* (pvr_fmt). Entry points by source pixel type:
