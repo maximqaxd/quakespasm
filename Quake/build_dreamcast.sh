@@ -14,7 +14,8 @@
 #   ./build_dreamcast.sh              # build elf + cdi
 #   ./build_dreamcast.sh elf          # build elf only
 #   ./build_dreamcast.sh cdi          # package cdi only (elf must exist)
-#   ./build_dreamcast.sh clean        # remove objects, elf and cdi
+#   ./build_dreamcast.sh iso          # DreamShell-bootable iso (elf must exist)
+#   ./build_dreamcast.sh clean        # remove objects, elf, cdi and iso
 #   JOBS=8 ./build_dreamcast.sh       # override parallel jobs
 #   USE_DC_PROFILER=1 ./build_dreamcast.sh   # on-screen function profiler:
 #                                     #   builds with -finstrument-functions and
@@ -29,6 +30,10 @@ cd "$SCRIPT_DIR"
 TARGET_ELF="quakespasm.elf"
 # The bootable disc image is written next to the game data, at Dreamcast/.
 TARGET_CDI="../Dreamcast/quakespasm.cdi"
+# DreamShell-bootable ISO (unscrambled 1ST_READ.BIN + IP.BIN), same location.
+TARGET_ISO="../Dreamcast/quakespasm.iso"
+# IP.BIN metadata (product no, title, boot filename). Committed next to this script.
+IP_TXT="ip.txt"
 # Disc data (id1/ with pak files + music) lives at <repo root>/Dreamcast/cd.
 # The script runs from Quake/, so reach it one level up.
 DATA_DIR="../Dreamcast/cd"
@@ -138,11 +143,56 @@ build_cdi() {
     echo ">> Done: $TARGET_CDI ($(du -h "$TARGET_CDI" | cut -f1))"
 }
 
+# Build a DreamShell-bootable ISO. Unlike the GD-ROM/BIOS boot path, DreamShell's
+# loader runs an UNSCRAMBLED 1ST_READ.BIN, so we objcopy the ELF straight to binary
+# (no scramble step), make the IP.BIN bootstrap from ip.txt, drop 1ST_READ.BIN into
+# the disc root, and mkisofs with the bootstrap embedded (-G). Mirrors the xash3d_dc
+# `ds_iso` target.
+build_iso() {
+    if [ ! -f "$TARGET_ELF" ]; then
+        echo "error: $TARGET_ELF not found; build it first." >&2
+        exit 1
+    fi
+    local makeip="$KOS_BASE/utils/makeip/makeip"
+    if [ ! -x "$makeip" ]; then
+        echo "error: makeip not found at $makeip" >&2
+        exit 1
+    fi
+    if ! command -v mkisofs >/dev/null 2>&1 && ! command -v genisoimage >/dev/null 2>&1; then
+        echo "error: mkisofs/genisoimage not found in PATH." >&2
+        exit 1
+    fi
+    local mkiso; mkiso=$(command -v mkisofs || command -v genisoimage)
+
+    # Ship the engine's own pak alongside the game data (as build_cdi does).
+    if [ -f "quakespasm.pak" ]; then
+        echo ">> Copying quakespasm.pak -> $DATA_DIR/id1/"
+        mkdir -p "$DATA_DIR/id1"
+        cp -f "quakespasm.pak" "$DATA_DIR/id1/quakespasm.pak"
+    fi
+    if [ ! -d "$DATA_DIR/id1" ] || [ -z "$(find "$DATA_DIR/id1" -iname '*.pak' 2>/dev/null)" ]; then
+        echo ">> WARNING: no .pak files under $DATA_DIR/id1 -- the disc will boot"
+        echo "   but the engine won't find game data."
+    fi
+
+    echo ">> 1ST_READ.BIN (unscrambled) from $TARGET_ELF"
+    kos-objcopy -R .stack -O binary "$TARGET_ELF" "$DATA_DIR/1ST_READ.BIN"
+
+    echo ">> IP.BIN from $IP_TXT"
+    "$makeip" "$IP_TXT" IP.BIN
+
+    echo ">> Packaging $TARGET_ISO (data root = $DATA_DIR/)"
+    "$mkiso" -V QUAKESPASM -G IP.BIN -r -J -l -o "$TARGET_ISO" "$DATA_DIR"
+    rm -f IP.BIN
+    echo ">> Done: $TARGET_ISO ($(du -h "$TARGET_ISO" | cut -f1))"
+}
+
 case "${1:-all}" in
     elf)    build_elf ;;
     cdi)    build_cdi ;;
+    iso)    build_iso ;;
     syms)   build_syms ;;
-    clean)  make -f Makefile.dreamcast clean USE_PVR_RENDER="$USE_PVR_RENDER" USE_QW_PROTOCOL="$USE_QW_PROTOCOL" USE_DC_PROFILER="$USE_DC_PROFILER"; rm -f "$TARGET_CDI" "$DATA_DIR/prof.syms" quakespasm.map ;;
+    clean)  make -f Makefile.dreamcast clean USE_PVR_RENDER="$USE_PVR_RENDER" USE_QW_PROTOCOL="$USE_QW_PROTOCOL" USE_DC_PROFILER="$USE_DC_PROFILER"; rm -f "$TARGET_CDI" "$TARGET_ISO" IP.BIN "$DATA_DIR/1ST_READ.BIN" "$DATA_DIR/prof.syms" quakespasm.map ;;
     all|"") build_elf; build_cdi ;;
-    *)      echo "usage: $0 [all|elf|cdi|syms|clean]" >&2; exit 1 ;;
+    *)      echo "usage: $0 [all|elf|cdi|iso|syms|clean]" >&2; exit 1 ;;
 esac
