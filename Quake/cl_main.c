@@ -106,6 +106,11 @@ void CL_Disconnect (void)
 	if (key_dest == key_message)
 		Key_EndChat ();	// don't get stuck in chat mode
 
+// drop the loading plaque: if the server boots us mid-signon (e.g. QW map missing
+// or checksum mismatch, before the first player frame that would end it), the
+// plaque would otherwise stay up forever. Safe on every disconnect path.
+	SCR_EndLoadingPlaque ();
+
 // stop sounds (especially looping!)
 	S_StopAllSounds (true);
 	BGM_Stop();
@@ -242,6 +247,15 @@ void CL_SignonReply (void)
 		MSG_WriteByte (&cls.message, clc_stringcmd);
 		MSG_WriteString (&cls.message, "begin");
 		Cache_Report ();		// print remaining memory
+#if defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER)
+		{	// TEST: report VRAM texture-pool usage now that the map's textures are up
+			extern size_t PVR_VramUsedBytes (void);
+			extern size_t PVR_VramFreeBytes (void);
+			Con_Printf ("VRAM: %u KB used, %u KB free\n",
+				    (unsigned)(PVR_VramUsedBytes () / 1024),
+				    (unsigned)(PVR_VramFreeBytes () / 1024));
+		}
+#endif
 		break;
 
 	case 4:

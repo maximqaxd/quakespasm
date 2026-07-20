@@ -36,10 +36,17 @@ static void CLQW_ParseServerData (void)
 	CL_ClearState ();
 	CLQW_ClearEntities ();
 
-	// QW is always multiplayer: size the scoreboard (names, frags, colors) for
-	// every slot. This also arms the renderer's player-color path, which keys
-	// off cl.maxclients.
+#if defined(PLATFORM_DREAMCAST)
+	SCR_BeginLoading ();	// plaque + progress bar for the (re)load, like NetQuake
+#endif
+
+	// QW is always multiplayer deathmatch: size the scoreboard (names, frags,
+	// colors) for every slot -- this also arms the renderer's player-color path,
+	// which keys off cl.maxclients -- and flag the gametype so the Tab scoreboard
+	// draws the frags overlay (Sbar_DeathmatchOverlay / MiniDeathmatchOverlay)
+	// instead of the single-player level stats (monsters/secrets/time).
 	cl.maxclients = QW_MAX_CLIENTS;
+	cl.gametype = GAME_DEATHMATCH;
 	cl.scores = (scoreboard_t *) Hunk_AllocName (cl.maxclients * sizeof(*cl.scores), "scores");
 
 	protover = MSG_ReadLong ();
@@ -119,6 +126,9 @@ static void CLQW_ParseSoundlist (void)
 	}
 
 	// sounds done -> request the model list
+#if defined(PLATFORM_DREAMCAST)
+	SCR_LoadingProgress (0.2f);
+#endif
 	MSG_WriteByte (&cls.netchan.message, qwclc_stringcmd);
 	MSG_WriteString (&cls.netchan.message, va("modellist %i 0", qwcl.servercount));
 }
@@ -161,6 +171,9 @@ static void CLQW_ParseModellist (void)
 	}
 
 	// models done -> bring up the world
+#if defined(PLATFORM_DREAMCAST)
+	SCR_LoadingProgress (0.4f);
+#endif
 	cl.worldmodel = cl.model_precache[1];
 	if (!cl.worldmodel)
 	{
@@ -169,8 +182,21 @@ static void CLQW_ParseModellist (void)
 		return;
 	}
 	R_NewMap ();
+#if defined(PLATFORM_DREAMCAST)
+	SCR_LoadingProgress (0.9f);	// world + lightmaps built; the signon does the rest
+#endif
 	CLQW_FindModelNumbers ();	// resolve player/spike/flag model indices
 	Con_Printf ("[QW] map loaded: %s\n", cl.worldmodel->name);
+
+#if defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER)
+	{	// TEST: report VRAM texture-pool usage once the map's textures are up
+		extern size_t PVR_VramUsedBytes (void);
+		extern size_t PVR_VramFreeBytes (void);
+		Con_Printf ("[QW] VRAM: %u KB used, %u KB free\n",
+			    (unsigned)(PVR_VramUsedBytes () / 1024),
+			    (unsigned)(PVR_VramFreeBytes () / 1024));
+	}
+#endif
 
 	// The world is up: let the engine render it. (No player position until the
 	// first frame arrives in phase 3, so the view starts at the origin.)
@@ -315,6 +341,10 @@ static void CLQW_ParsePlayerinfo (void)
 		// miss (and smooth it out) before overwriting with server truth
 		if (qw_validsequence)
 			CLQW_CalcPredictionError (ps->origin, origin);
+#if defined(PLATFORM_DREAMCAST)
+		else
+			SCR_EndLoadingPlaque ();	// first player frame -> spawned; drop the plaque
+#endif
 
 		VectorCopy (origin, ps->origin);
 		VectorCopy (velocity, ps->velocity);

@@ -993,6 +993,16 @@ static void Host_Reconnect_f (void)
 	if (cls.demoplayback)	// cross-map demo playback fix from Baker
 		return;
 
+#if defined(USE_QW_PROTOCOL)
+	// QuakeWorld level change: the server stuffs "reconnect", and we pull fresh
+	// serverdata over the live channel with "new" -- not the NetQuake signon reset.
+	if (cls.protofamily == PROTO_QW)
+	{
+		CLQW_Reconnect ();
+		return;
+	}
+#endif
+
 	SCR_BeginLoadingPlaque ();
 	CL_ClearSignons ();		// need new connection messages
 }

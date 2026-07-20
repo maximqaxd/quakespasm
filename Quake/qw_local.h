@@ -378,6 +378,7 @@ void	CLQW_CalcPredictionError (const vec3_t predicted, const vec3_t server);
 void	CLQW_Init (void);				// one-time QW client init (from CL_Init)
 void	CLQW_EstablishConnection (const char *host);	// connectionless handshake start
 void	CLQW_Disconnect (void);				// tear down the QW connection
+void	CLQW_Reconnect (void);				// level change: re-request serverdata ("new")
 qboolean CLQW_IsIdle (void);				// no QW connection in progress
 qboolean CLQW_Spectator (void);				// joining/joined as a spectator?
 void	CLQW_SetSpectator (qboolean on);

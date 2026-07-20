@@ -373,7 +373,30 @@ signon. Keep the netchan; just note it so we don't spam the console.
 */
 static void CLQW_Changing_f (void)
 {
-	Con_DPrintf ("[QW] server changing map...\n");
+	// Server is switching maps: drop out of the active game (but stay on the
+	// channel) so we don't render stale entities while the reload runs. The
+	// "reconnect" that follows pulls the new serverdata. Matches CL_Changing_f.
+	S_StopAllSounds (true);
+	cl.intermission = 0;
+	cls.state = ca_connected;
+	Con_Printf ("\nChanging map...\n");
+}
+
+/*
+=====================
+CLQW_Reconnect -- the "reconnect" the server stuffs on a level change: while we're
+still on the channel, ask for fresh serverdata with "new" (no full reconnect).
+Called from Host_Reconnect_f when the active family is QuakeWorld.
+=====================
+*/
+void CLQW_Reconnect (void)
+{
+	if (qw_connstate != QWCS_CONNECTED)
+		return;
+	S_StopAllSounds (true);
+	Con_Printf ("reconnecting...\n");
+	MSG_WriteByte (&cls.netchan.message, qwclc_stringcmd);
+	MSG_WriteString (&cls.netchan.message, "new");
 }
 
 /*
