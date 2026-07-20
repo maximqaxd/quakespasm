@@ -257,6 +257,43 @@ qboolean Sys_IsNaomi (void)
 	return naomi;
 }
 
+#include <malloc.h>	/* mallinfo -- newlib heap accounting */
+#include <unistd.h>	/* sbrk */
+/*
+================
+Sys_DC_MemReport -- print the Quake hunk usage and how much RAM is really left for
+malloc.
+
+mallinfo() only describes the CURRENTLY sbrk'd heap (arena) -- its "free" is just
+the slack inside that, not the RAM malloc can still claim. On the Dreamcast the
+heap grows via sbrk up to _arch_mem_top, so the true malloc headroom is
+(_arch_mem_top - current brk) PLUS mallinfo.fordblks. The Quake hunk is one big
+malloc block inside the arena, so the hunk's own unused space is separate again --
+available to the hunk allocator but not to malloc.
+================
+*/
+void Sys_DC_MemReport (void)
+{
+	extern int	hunk_size, hunk_low_used, hunk_high_used;
+	extern uint32_t	_arch_mem_top;		/* top of usable RAM (0x8c000000 = base) */
+	struct mallinfo	mi = mallinfo ();
+	uintptr_t	base = 0x8c000000u;
+	uintptr_t	brk  = (uintptr_t) sbrk (0);
+	size_t		headroom = (_arch_mem_top > brk) ? (size_t)(_arch_mem_top - brk) : 0;
+
+	Con_Printf ("RAM: %u KB total, %u KB claimed by heap, %u KB unclaimed\n",
+		    (unsigned)((_arch_mem_top - base) / 1024),
+		    (unsigned)((brk - base) / 1024),
+		    (unsigned)(headroom / 1024));
+	Con_Printf ("hunk: %d KB used (low %d, high %d) of %d KB reserved\n",
+		    (hunk_low_used + hunk_high_used) / 1024,
+		    hunk_low_used / 1024, hunk_high_used / 1024, hunk_size / 1024);
+	Con_Printf ("malloc: %u KB used, %u KB free (%u in-arena + %u sbrk headroom)\n",
+		    (unsigned)(mi.uordblks / 1024),
+		    (unsigned)((mi.fordblks + headroom) / 1024),
+		    (unsigned)(mi.fordblks / 1024), (unsigned)(headroom / 1024));
+}
+
 #include <dc/video.h>		/* vram_s, vid_empty */
 #include <dc/biosfont.h>	/* bfont_draw_str, BFONT_* */
 #include <kos/dbgio.h>		/* dbgio_dev_select */

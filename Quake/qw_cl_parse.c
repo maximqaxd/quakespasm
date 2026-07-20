@@ -197,6 +197,9 @@ static void CLQW_ParseModellist (void)
 			    (unsigned)(PVR_VramFreeBytes () / 1024));
 	}
 #endif
+#if defined(PLATFORM_DREAMCAST)
+	Sys_DC_MemReport ();		// hunk + malloc-heap usage
+#endif
 
 	// The world is up: let the engine render it. (No player position until the
 	// first frame arrives in phase 3, so the view starts at the origin.)

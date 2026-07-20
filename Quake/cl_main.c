@@ -256,6 +256,9 @@ void CL_SignonReply (void)
 				    (unsigned)(PVR_VramFreeBytes () / 1024));
 		}
 #endif
+#if defined(PLATFORM_DREAMCAST)
+		Sys_DC_MemReport ();		// hunk + malloc-heap usage
+#endif
 		break;
 
 	case 4:

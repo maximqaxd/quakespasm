@@ -73,6 +73,8 @@ void Sys_SendKeyEvents (void);
 qboolean Sys_IsNaomi (void);
 // true on Sega NAOMI arcade hardware (32MB RAM / 16MB VRAM), false on retail DC
 
+void Sys_DC_MemReport (void);	// print hunk + malloc-heap (mallinfo) usage
+
 void VMU_HUD_Init (void);	// VMU LCD mini-HUD (pl_vmu_hud.c)
 void VMU_HUD_Update (void);
 #endif
