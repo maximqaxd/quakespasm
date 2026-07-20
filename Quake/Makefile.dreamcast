@@ -113,7 +113,7 @@ SYSOBJ_GL_VID= gl_vidsdl.o
 SYSOBJ_TEXMGR= gl_texmgr.o
 SYSOBJ_DRAW  = gl_draw.o
 SYSOBJ_NET   = net_bsd.o net_udp.o net_dc.o
-SYSOBJ_SYS   = pl_linux.o sys_sdl_unix.o pl_vmu.o
+SYSOBJ_SYS   = pl_linux.o sys_sdl_unix.o pl_vmu.o pl_vmu_hud.o
 SYSOBJ_MAIN  = main_sdl.o
 
 GLOBJS = \

@@ -933,6 +933,12 @@ void Host_Init (void)
 		S_Init ();
 		CDAudio_Init ();
 		BGM_Init();
+#if defined(PLATFORM_DREAMCAST)
+		// Before Sbar_Init: it uploads the HUD pics via Draw_PicFromWad, which
+		// overwrites their pixel data with GL handles. The VMU HUD needs the
+		// pristine indexed pixels to downscale the face/weapon icons.
+		VMU_HUD_Init ();
+#endif
 		Sbar_Init ();
 		CL_Init ();
 	}

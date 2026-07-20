@@ -72,6 +72,9 @@ void Sys_SendKeyEvents (void);
 #if defined(PLATFORM_DREAMCAST)
 qboolean Sys_IsNaomi (void);
 // true on Sega NAOMI arcade hardware (32MB RAM / 16MB VRAM), false on retail DC
+
+void VMU_HUD_Init (void);	// VMU LCD mini-HUD (pl_vmu_hud.c)
+void VMU_HUD_Update (void);
 #endif
 
 #endif	/* _QUAKE_SYS_H */

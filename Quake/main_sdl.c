@@ -229,6 +229,10 @@ int main(int argc, char *argv[])
 
 		Host_Frame (time);
 
+#if defined(PLATFORM_DREAMCAST)
+		VMU_HUD_Update ();	// glance-able health/weapon/ammo on the VMU LCD
+#endif
+
 		if (time < sys_throttle.value && !cls.timedemo)
 			SDL_Delay(1);
 
