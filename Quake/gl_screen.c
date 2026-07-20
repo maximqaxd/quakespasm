@@ -27,6 +27,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 #if defined(PLATFORM_DREAMCAST)
 #include <kos/dbgio.h>	/* dbgio_dev_select -- move the boot log off the framebuffer */
+#if defined(USE_DC_PROFILER)
+#include "prof_dc.h"
+#endif
 #endif
 
 /*
@@ -580,6 +583,41 @@ void SCR_DrawDevStats (void)
 	sprintf (str, "Tempents |%4i %4i", dev_stats.tempents, dev_peakstats.tempents);
 	Draw_String (x, (y++)*8-x, str);
 }
+
+#if defined(PLATFORM_DREAMCAST) && defined(USE_DC_PROFILER)
+/*
+==============
+SCR_DrawProfiler -- top functions by self time (prof cvar), like r_speeds but
+per-function. Columns: self ms/frame, inclusive ms/frame, calls/frame, name.
+==============
+*/
+void SCR_DrawProfiler (void)
+{
+	char	lines[18][40];
+	int	i, n, cap, x, y, y0, boxw, boxh;
+
+	if (!Prof_Active ())
+		return;
+
+	cap = (int)prof.value;
+	if (cap < 1) cap = 1;
+	if (cap > 18) cap = 18;
+	n = Prof_FormatView (lines, cap);
+
+	// CANVAS_DEFAULT is the full framebuffer (glwidth x glheight), origin top-left.
+	// Center the panel: 40 chars wide, header + n rows tall (8px cells).
+	GL_SetCanvas (CANVAS_DEFAULT);
+	boxw = 40 * 8;
+	boxh = (n + 2) * 8;
+	x  = (glwidth  - boxw) / 2; if (x  < 0) x  = 0;
+	y0 = (glheight - boxh) / 2; if (y0 < 0) y0 = 0;
+
+	Draw_Fill (x, y0, boxw, boxh, 0, 0.5);
+	Draw_String (x, y0, Prof_ViewHeader ());
+	for (i = 0, y = y0 + 8; i < n; i++, y += 8)
+		Draw_String (x, y, lines[i]);
+}
+#endif
 
 /*
 ==============
@@ -1233,6 +1271,9 @@ void SCR_UpdateScreen (void)
 		SCR_CheckDrawCenterString ();
 		Sbar_Draw ();
 		SCR_DrawDevStats (); //johnfitz
+#if defined(PLATFORM_DREAMCAST) && defined(USE_DC_PROFILER)
+		SCR_DrawProfiler ();
+#endif
 		SCR_DrawFPS (); //johnfitz
 		SCR_DrawClock (); //johnfitz
 		SCR_DrawConsole ();

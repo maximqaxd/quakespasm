@@ -451,6 +451,17 @@ void D_FlushCaches (void)
 {
 }
 
+#if defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER)
+// The native PVR renderer has no GLSL (gl_glsl_able is always false), so these
+// are never used. Provide stub entry points for the public helpers -- the real
+// bodies reference the desktop GL_*Func shader pointers, which aren't linked in
+// this build. (With LTO they were dead-stripped; -fno-lto keeps them, so guard.)
+GLint GL_GetUniformLocation (GLuint *programPtr, const char *name)
+{ (void)programPtr; (void)name; return -1; }
+GLuint GL_CreateProgram (const GLchar *vertSource, const GLchar *fragSource, int numbindings, const glsl_attrib_binding_t *bindings)
+{ (void)vertSource; (void)fragSource; (void)numbindings; (void)bindings; return 0; }
+void R_DeleteShaders (void) { }
+#else
 static GLuint gl_programs[16];
 static int gl_num_programs;
 
@@ -598,6 +609,7 @@ void R_DeleteShaders (void)
 	}
 	gl_num_programs = 0;
 }
+#endif	/* !(PLATFORM_DREAMCAST && USE_PVR_RENDER) */
 
 static GLuint current_array_buffer, current_element_array_buffer;
 

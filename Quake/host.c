@@ -23,6 +23,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 // host.c -- coordinates spawning and killing of local servers
 
 #include "quakedef.h"
+#if defined(PLATFORM_DREAMCAST) && defined(USE_DC_PROFILER)
+#include "prof_dc.h"
+#endif
 #include "bgmusic.h"
 #include <setjmp.h>
 
@@ -938,6 +941,9 @@ void Host_Init (void)
 		// overwrites their pixel data with GL handles. The VMU HUD needs the
 		// pristine indexed pixels to downscale the face/weapon icons.
 		VMU_HUD_Init ();
+#endif
+#if defined(PLATFORM_DREAMCAST) && defined(USE_DC_PROFILER)
+		Prof_Init ();		// "prof" cvar + load /cd/prof.syms
 #endif
 		Sbar_Init ();
 		CL_Init ();

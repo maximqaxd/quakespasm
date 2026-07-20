@@ -159,7 +159,29 @@ CFLAGS  += -DUSE_QW_PROTOCOL
 QW_OBJS = qw_net.o qw_netchan.o qw_md4.o qw_crc.o qw_pmove.o qw_cl_input.o qw_cl_parse.o qw_cl_ents.o qw_cl_pred.o qw_cl_slist.o qw_cl_main.o
 endif
 
-OBJS = strlcat.o strlcpy.o $(PVR_OBJS) $(QW_OBJS) \
+# ---------------------------
+# On-screen function profiler (dcprofiler-style). Opt-in:
+#   make -f Makefile.dreamcast USE_DC_PROFILER=1
+# Compiles the whole engine with -finstrument-functions so every function calls
+# the __cyg_profile hooks in prof_dc.c (which is itself excluded). Emit a .map so
+# tools/map2profsyms.py can build prof.syms (address -> name); drop that next to
+# the data as /cd/prof.syms. Toggle at runtime with the "prof" cvar.
+# ---------------------------
+USE_DC_PROFILER ?= 0
+PROF_OBJS =
+PROF_INSTR =
+ifeq ($(USE_DC_PROFILER),1)
+PROF_INSTR = -finstrument-functions -finstrument-functions-exclude-file-list=prof_dc
+# -fno-lto (overrides KOS's -flto in KOS_CFLAGS): LTO privatises static functions
+# with .lto_priv suffixes and inlines across files, so the profiler would show
+# mangled/merged names. Disabling it keeps real, per-function symbols.
+CFLAGS  += -DUSE_DC_PROFILER $(PROF_INSTR) -fno-lto
+LDFLAGS += -Wl,-Map,quakespasm.map -fno-lto
+STRIP   =					# keep symbols so sh-elf-nm can build prof.syms
+PROF_OBJS = prof_dc.o
+endif
+
+OBJS = strlcat.o strlcpy.o $(PVR_OBJS) $(QW_OBJS) $(PROF_OBJS) \
 	$(GLOBJS) \
 	$(SYSOBJ_INPUT) $(COMOBJ_SND) $(SYSOBJ_SND) $(SYSOBJ_CDA) \
 	$(SYSOBJ_NET) net_dgrm.o net_loop.o net_main.o \
@@ -183,14 +205,25 @@ all: quakespasm.elf
 
 # Hot paths built for speed, not size: the SH4 math and the PVR render modules
 # (per-vertex transform/lighting/TA submission) are the per-frame CPU cost.
+# mathlib.c ICEs the SH4 gcc under -finstrument-functions (the sh4zam sincos inline
+# asm in AngleVectors), so strip the profiler instrumentation from just this file --
+# its cost still shows up as self-time in its callers. PROF_INSTR is empty in a
+# non-profiler build, so filter-out is a no-op there.
 mathlib.o: mathlib.c
-	$(CC) $(CFLAGS_SPEED) -c -o $@ $<
+	$(CC) $(filter-out $(PROF_INSTR),$(CFLAGS_SPEED)) -c -o $@ $<
 
 pvr_%.o: pvr_%.c
 	$(CC) $(CFLAGS_SPEED) -c -o $@ $<
 
+# snd_mix.c is the per-frame audio mixer -- the channel painters (SND_PaintChannel*)
+# and the clamp/transfer sample loops run every mix. -Os leaves them tight but not
+# scheduled/unrolled; -O3 inlines the painters and unrolls the inner loops for
+# better SH4 dual-issue. The code is integer, so output is bit-identical to -Os.
+snd_mix.o: snd_mix.c
+	$(CC) $(CFLAGS_SPEED) -c -o $@ $<
+
 quakespasm.elf: $(OBJS)
-	$(LINKER) $(STRIP) -o $@ $(OBJS) $(LIBS)
+	$(LINKER) $(STRIP) $(LDFLAGS) -o $@ $(OBJS) $(LIBS)
 
 clean:
 	rm -f $(OBJS) quakespasm.elf

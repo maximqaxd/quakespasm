@@ -129,12 +129,14 @@ cvar_t	r_scale = {"r_scale", "1", CVAR_ARCHIVE};
 
 static GLuint r_gamma_texture;
 static GLuint r_gamma_program;
+#if !(defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER))
 static int r_gamma_texture_width, r_gamma_texture_height;
 
 // uniforms used in gamma shader
 static GLint  gammaLoc;
 static GLint  contrastLoc;
 static GLint  textureLoc;
+#endif
 
 /*
 =============
@@ -148,6 +150,7 @@ void GLSLGamma_DeleteTexture (void)
 	r_gamma_program = 0; // deleted in R_DeleteShaders
 }
 
+#if !(defined(PLATFORM_DREAMCAST) && defined(USE_PVR_RENDER))
 /*
 =============
 GLSLGamma_CreateShaders
@@ -296,6 +299,10 @@ void GLSLGamma_GammaCorrect (void)
 // clear cached binding
 	GL_ClearBindings ();
 }
+#else
+// Native PVR renderer: no GLSL gamma pass (gl_glsl_gamma_able is always false).
+void GLSLGamma_GammaCorrect (void) { }
+#endif	/* !(PLATFORM_DREAMCAST && USE_PVR_RENDER) */
 
 /*
 =================

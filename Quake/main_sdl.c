@@ -25,6 +25,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include <kos.h>
 #endif
 #include "quakedef.h"
+#if defined(PLATFORM_DREAMCAST) && defined(USE_DC_PROFILER)
+#include "prof_dc.h"
+#endif
 #if defined(SDL_FRAMEWORK) || defined(NO_SDL_CONFIG)
 #if defined(USE_SDL2)
 #include <SDL2/SDL.h>
@@ -226,6 +229,10 @@ int main(int argc, char *argv[])
 		}
 		newtime = Sys_DoubleTime ();
 		time = newtime - oldtime;
+
+#if defined(PLATFORM_DREAMCAST) && defined(USE_DC_PROFILER)
+		Prof_FrameMark ();	// loop top (call depth 0): roll the profiler window
+#endif
 
 		Host_Frame (time);
 

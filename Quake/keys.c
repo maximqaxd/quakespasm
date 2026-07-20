@@ -22,6 +22,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 */
 
 #include "quakedef.h"
+#if defined(PLATFORM_DREAMCAST) && defined(USE_DC_PROFILER)
+#include "prof_dc.h"
+#endif
 #include "arch_def.h"
 
 /* key up events are sent even if in console mode */
@@ -984,6 +987,28 @@ void Key_EventWithKeycode (int key, qboolean down, int keycode)
 	// the on-screen keyboard steals navigation/select while a field is focused
 	if (OSK_KeyEvent (key, down))
 		return;
+#endif
+
+#if defined(PLATFORM_DREAMCAST) && defined(USE_DC_PROFILER)
+	// While the profiler overlay is up in-game, the D-pad (arrows) drives its
+	// navigator instead of moving the player: up/down=scroll, right=drill in,
+	// left=back out (off past the top). Acts once per press; the event is
+	// swallowed so movement/binds (weapon switch etc.) don't fire.
+	if (Prof_Active () && key_dest == key_game)
+	{
+		int dir = -1;
+		if	(key == K_UPARROW)	dir = 0;
+		else if (key == K_DOWNARROW)	dir = 1;
+		else if (key == K_LEFTARROW)	dir = 2;
+		else if (key == K_RIGHTARROW)	dir = 3;
+		if (dir >= 0)
+		{
+			if (down && !keydown[key])
+				Prof_Nav (dir);
+			keydown[key] = down;
+			return;
+		}
+	}
 #endif
 
 // handle fullscreen toggle
