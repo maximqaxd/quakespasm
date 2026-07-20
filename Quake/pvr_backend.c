@@ -21,8 +21,10 @@ static float	pvr_clear[3] = { 0.0f, 0.0f, 0.0f };
 // PVR TA config: small 8-word OPBs, a small TA vertex buffer (in VRAM, not main
 // RAM -- the whole point over GLdc), autosort enabled so the PVR sorts the TR
 // list, and 2 OPB-overflow sets to avoid tile-boundary flicker on heavy scenes.
-// Kept lean so full-res (gl_picmip 0) textures fit the 8MB VRAM: all bins 8-word,
-// 1MB vertex buffer. Bump these up if dense scenes drop polys or flicker.
+// Kept lean so full-res (gl_picmip 0) textures fit retail's 8MB VRAM (NAOMI has
+// 16MB -- KOS reports it via PVR_RAM_SIZE_MB and pvr_alloc sizes the pool from
+// pvr_mem_available, so it uses whatever's there): all bins 8-word, 1MB vertex
+// buffer. Bump these up if dense scenes drop polys or flicker.
 static pvr_init_params_t pvr_params =
 {
 	/* opb_sizes: OP, OP-mod, TR, TR-mod, PT */
