@@ -379,6 +379,16 @@ void R_NewMap (void)
 {
 	int		i;
 
+	// Drop the per-player translated skins. Their gltexture_t's are owned by the
+	// (non-persistent) player model and get freed when this map's textures flush,
+	// so the stale pointers would otherwise dangle -- and a colour/userinfo update
+	// on the new map would call TexMgr_ReloadImage on a freed (reused) struct,
+	// reading a garbage source format/offset and crashing. They're rebuilt on the
+	// next player update (R_TranslateNewPlayerSkin). (R_NewGame only fires on a
+	// game switch, not per map.)
+	for (i=0 ; i<MAX_SCOREBOARD ; i++)
+		playertextures[i] = NULL;
+
 	for (i=0 ; i<256 ; i++)
 		d_lightstylevalue[i] = 264;		// normal light value
 
